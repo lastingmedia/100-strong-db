@@ -6,10 +6,12 @@ WordPress plugin for a nonprofit member directory with:
 - Member fields for first name, last name, email, and occupation
 - Featured image support for profile photos
 - Bulk member import from CSV
+- Stripe subscription import and billing management
+- Member application workflow with admin review
 - Elementor-friendly shortcode support
 - A native Elementor widget when Elementor is active
 - Optional members-only access control
-- Automatic WordPress login creation for members with email addresses
+- Automatic WordPress login creation for new members
 
 ## Installation
 
