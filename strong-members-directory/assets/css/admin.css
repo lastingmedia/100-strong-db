@@ -1,0 +1,324 @@
+.smd-admin-wrap {
+	--smd-admin-blue: #0f4c81;
+	--smd-admin-blue-deep: #0b3a63;
+	--smd-admin-blue-soft: #eaf3fb;
+	--smd-admin-border: #d7e3ef;
+	--smd-admin-text: #1b2f44;
+	--smd-admin-muted: #5f6f82;
+	color: var(--smd-admin-text);
+}
+
+.smd-admin-wrap h1,
+.post-type-smd_applicant .wrap h1,
+.post-php.post-type-smd_applicant .wrap h1,
+.post-new-php.post-type-smd_applicant .wrap h1 {
+	font-family: Oswald, sans-serif;
+	letter-spacing: 0.02em;
+	color: #17324f;
+}
+
+.smd-admin-hero,
+.smd-admin-panel,
+#smd-applicant-workflow .inside,
+#smd-applicant-details .inside {
+	background: linear-gradient(180deg, #ffffff 0%, #f8fbfe 100%);
+	border: 1px solid var(--smd-admin-border);
+	border-radius: 22px;
+	box-shadow: 0 16px 40px rgba(15, 76, 129, 0.08);
+}
+
+.smd-admin-hero {
+	padding: 28px 30px;
+	margin: 18px 0 22px;
+}
+
+.smd-admin-kicker {
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--smd-admin-blue);
+	margin-bottom: 10px;
+}
+
+.smd-admin-hero p,
+.smd-admin-section-head p,
+.smd-admin-help-copy,
+.smd-admin-table-subcopy,
+.smd-admin-empty,
+.post-type-smd_applicant .description {
+	color: var(--smd-admin-muted);
+}
+
+.smd-admin-summary-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+	gap: 16px;
+	margin: 0 0 22px;
+}
+
+.smd-admin-summary-card {
+	background: #fff;
+	border: 1px solid var(--smd-admin-border);
+	border-radius: 20px;
+	padding: 20px 22px;
+	box-shadow: 0 12px 30px rgba(15, 76, 129, 0.06);
+}
+
+.smd-admin-summary-count {
+	font-family: Oswald, sans-serif;
+	font-size: 42px;
+	line-height: 1;
+	color: #17324f;
+}
+
+.smd-admin-panel {
+	padding: 22px 24px;
+	margin: 0 0 22px;
+}
+
+.smd-admin-panel-tight {
+	padding: 16px 18px;
+}
+
+.smd-admin-section-head {
+	margin-bottom: 14px;
+}
+
+.smd-admin-section-head h2 {
+	margin: 0 0 6px;
+	font-family: Oswald, sans-serif;
+	font-size: 28px;
+	color: #17324f;
+}
+
+.smd-admin-table {
+	border: 0;
+	box-shadow: none;
+	background: transparent;
+}
+
+.smd-admin-table thead th {
+	background: #eff6fc;
+	color: #35506d;
+	border-bottom: 1px solid var(--smd-admin-border);
+	font-weight: 700;
+}
+
+.smd-admin-table tbody td,
+.smd-admin-table tbody th {
+	padding-top: 16px;
+	padding-bottom: 16px;
+	border-bottom: 1px solid #ebf1f7;
+}
+
+.smd-admin-table-title {
+	font-weight: 700;
+	color: #17324f;
+	text-decoration: none;
+}
+
+.smd-admin-table-title:hover,
+.smd-admin-inline-link a:hover {
+	color: var(--smd-admin-blue);
+}
+
+.smd-admin-table-subcopy {
+	margin-top: 4px;
+	font-size: 13px;
+}
+
+.smd-admin-status-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 7px 12px;
+	border-radius: 999px;
+	font-size: 12px;
+	font-weight: 700;
+	line-height: 1;
+	background: #edf4fb;
+	color: var(--smd-admin-blue-deep);
+	border: 1px solid #cfe0f1;
+}
+
+.smd-admin-status-new_application,
+.smd-admin-status-board_review {
+	background: #eef4fb;
+	border-color: #cfe0f1;
+	color: #0f4c81;
+}
+
+.smd-admin-status-approved_awaiting_interest,
+.smd-admin-status-approved_awaiting_billing {
+	background: #fff6e7;
+	border-color: #f1d69f;
+	color: #8a5a00;
+}
+
+.smd-admin-status-onboarded {
+	background: #e8f7ec;
+	border-color: #b9dfc1;
+	color: #1d6b37;
+}
+
+.smd-admin-status-declined {
+	background: #fbeceb;
+	border-color: #efc1bc;
+	color: #8a2c22;
+}
+
+.smd-admin-status-billing {
+	background: #f0f4f8;
+	border-color: #d9e3ec;
+	color: #4d647c;
+}
+
+.smd-admin-action-grid {
+	display: grid;
+	gap: 10px;
+	margin-top: 16px;
+}
+
+.smd-admin-action-form {
+	margin: 0;
+}
+
+.smd-admin-button,
+.smd-admin-button-inline,
+.post-type-smd_applicant .button.button-secondary,
+.post-type-smd_applicant .button.button-primary {
+	width: 100%;
+	min-height: 42px;
+	border-radius: 14px;
+	border-color: var(--smd-admin-blue) !important;
+	background: #fff !important;
+	color: var(--smd-admin-blue) !important;
+	box-shadow: none;
+	-webkit-text-fill-color: var(--smd-admin-blue);
+}
+
+.smd-admin-button-inline {
+	width: auto;
+	min-height: 36px;
+	padding-inline: 14px;
+}
+
+.smd-admin-button:hover,
+.smd-admin-button:focus,
+.smd-admin-button-inline:hover,
+.smd-admin-button-inline:focus,
+.post-type-smd_applicant .button.button-secondary:hover,
+.post-type-smd_applicant .button.button-secondary:focus,
+.post-type-smd_applicant .button.button-primary:hover,
+.post-type-smd_applicant .button.button-primary:focus {
+	border-color: var(--smd-admin-blue-deep) !important;
+	background: var(--smd-admin-blue) !important;
+	color: #fff !important;
+	-webkit-text-fill-color: #fff !important;
+	box-shadow: 0 10px 24px rgba(15, 76, 129, 0.18);
+	text-shadow: none;
+}
+
+#smd-applicant-workflow .button,
+#smd-applicant-workflow .button:hover,
+#smd-applicant-workflow .button:focus,
+#smd-applicant-workflow .button:active,
+.smd-admin-button:hover,
+.smd-admin-button:focus,
+.smd-admin-button-inline:hover,
+.smd-admin-button-inline:focus,
+.post-type-smd_applicant .button.button-secondary:hover span,
+.post-type-smd_applicant .button.button-secondary:focus span,
+.post-type-smd_applicant .button.button-primary:hover span,
+.post-type-smd_applicant .button.button-primary:focus span {
+	color: #fff !important;
+}
+
+#smd-applicant-workflow .button {
+	border-color: var(--smd-admin-blue) !important;
+	background: #fff !important;
+	color: var(--smd-admin-blue) !important;
+	-webkit-text-fill-color: var(--smd-admin-blue) !important;
+}
+
+#smd-applicant-workflow .button:hover,
+#smd-applicant-workflow .button:focus,
+#smd-applicant-workflow .button:active {
+	border-color: var(--smd-admin-blue-deep) !important;
+	background: #eef6ff !important;
+	color: var(--smd-admin-blue-deep) !important;
+	-webkit-text-fill-color: var(--smd-admin-blue-deep) !important;
+	box-shadow: 0 10px 24px rgba(15, 76, 129, 0.12);
+}
+
+.smd-admin-inline-link a {
+	color: var(--smd-admin-blue);
+	font-weight: 600;
+	text-decoration: none;
+}
+
+.smd-admin-form-table th {
+	width: 220px;
+	color: #35506d;
+	font-weight: 700;
+}
+
+.smd-admin-form-table td input[type="text"],
+.smd-admin-form-table td input[type="email"],
+.smd-admin-form-table td input[type="url"],
+.smd-admin-form-table td textarea,
+.smd-admin-form-table td select,
+.post-type-smd_applicant .regular-text,
+.post-type-smd_applicant .large-text {
+	border-color: #c7d7e7;
+	border-radius: 14px;
+	padding: 10px 14px;
+	box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.post-type-smd_applicant #poststuff .postbox {
+	border: 1px solid var(--smd-admin-border);
+	border-radius: 22px;
+	box-shadow: 0 16px 40px rgba(15, 76, 129, 0.08);
+	overflow: hidden;
+}
+
+.post-type-smd_applicant #poststuff .postbox-header {
+	background: linear-gradient(90deg, #0f4c81 0%, #184f7a 100%);
+	border-bottom: 0;
+}
+
+.post-type-smd_applicant #poststuff .postbox-header h2,
+.post-type-smd_applicant #poststuff .postbox-header .hndle {
+	color: #fff;
+	font-family: Oswald, sans-serif;
+	letter-spacing: 0.03em;
+}
+
+.post-type-smd_applicant #poststuff .handle-actions .handle-order-higher,
+.post-type-smd_applicant #poststuff .handle-actions .handle-order-lower,
+.post-type-smd_applicant #poststuff .handle-actions .handlediv {
+	color: #fff;
+}
+
+.post-type-smd_applicant .wp-list-table .column-smd_applicant_status,
+.post-type-smd_applicant .wp-list-table .column-smd_applicant_billing {
+	width: 180px;
+}
+
+@media (max-width: 960px) {
+	.smd-admin-summary-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.smd-admin-form-table th,
+	.smd-admin-form-table td {
+		display: block;
+		width: 100%;
+	}
+
+	.smd-admin-form-table th {
+		padding-bottom: 6px;
+	}
+}
