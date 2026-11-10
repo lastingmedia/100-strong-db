@@ -64,6 +64,7 @@ class SMD_Plugin {
 		SMD_Settings::ensure_dashboard_page();
 		SMD_Settings::ensure_nomination_page();
 		SMD_Settings::ensure_applicant_onboarding_page();
+		SMD_Settings::ensure_billing_page();
 		update_option( self::VERSION_OPTION, SMD_VERSION );
 		flush_rewrite_rules();
 	}
@@ -93,6 +94,7 @@ class SMD_Plugin {
 		SMD_Settings::ensure_dashboard_page();
 		SMD_Settings::ensure_nomination_page();
 		SMD_Settings::ensure_applicant_onboarding_page();
+		SMD_Settings::ensure_billing_page();
 		flush_rewrite_rules( false );
 		update_option( self::VERSION_OPTION, SMD_VERSION );
 	}

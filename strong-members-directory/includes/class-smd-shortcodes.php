@@ -13,6 +13,9 @@ class SMD_Shortcodes {
 		add_shortcode( 'strong_member', array( __CLASS__, 'render_single_member_shortcode' ) );
 		add_shortcode( 'strong_member_dashboard', array( __CLASS__, 'render_member_dashboard_shortcode' ) );
 		add_shortcode( 'strong_member_nomination', array( __CLASS__, 'render_member_nomination_shortcode' ) );
+		add_shortcode( 'strong_billing', array( __CLASS__, 'render_billing_shortcode' ) );
+		add_action( 'admin_post_nopriv_smd_request_billing_link', array( __CLASS__, 'handle_billing_link_request' ) );
+		add_action( 'admin_post_smd_request_billing_link', array( __CLASS__, 'handle_billing_link_request' ) );
 		add_filter( 'the_content', array( __CLASS__, 'render_single_member_content' ), 20 );
 		add_action( 'admin_post_smd_submit_member_nomination', array( __CLASS__, 'handle_member_nomination_submission' ) );
 	}
@@ -737,6 +740,196 @@ class SMD_Shortcodes {
 		<?php
 
 		return (string) ob_get_clean();
+	}
+
+	/**
+	 * Render the public billing page.
+	 *
+	 * Reachable from a signed emailed link, a member login, or an "email me a link" form,
+	 * so billing never has to be handled by sending Stripe links by hand.
+	 *
+	 * @return string
+	 */
+	public static function render_billing_shortcode() {
+		wp_enqueue_style( 'smd-frontend' );
+
+		$subject = SMD_Stripe::get_verified_billing_hub_subject();
+		$heading = esc_html__( 'Membership Billing', 'strong-members-directory' );
+		$body    = '';
+
+		if ( $subject && 'member' === $subject['type'] && SMD_Member_Post_Type::POST_TYPE === get_post_type( $subject['id'] ) ) {
+			$body = self::render_billing_panel( $subject['id'], SMD_Member_Post_Type::get_member_data( $subject['id'] ), true );
+		} elseif ( $subject && 'applicant' === $subject['type'] && SMD_Applicant_Post_Type::POST_TYPE === get_post_type( $subject['id'] ) ) {
+			$body = self::render_applicant_billing_panel( $subject['id'] );
+		} elseif ( is_user_logged_in() && self::get_current_member_id() ) {
+			$member_id = self::get_current_member_id();
+			$body      = self::render_billing_panel( $member_id, SMD_Member_Post_Type::get_member_data( $member_id ), true );
+		}
+
+		if ( '' === $body ) {
+			$body = self::render_billing_link_form( isset( $_GET['smd_hub'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		}
+
+		return '<section class="smd-dashboard smd-billing-page"><header class="smd-dashboard-header"><h1 class="smd-dashboard-title">' . $heading . '</h1></header>' . $body . '</section>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	}
+
+	/**
+	 * Billing options for an approved applicant.
+	 *
+	 * @param int $applicant_id Applicant ID.
+	 * @return string
+	 */
+	private static function render_applicant_billing_panel( $applicant_id ) {
+		$fields = SMD_Applicant_Post_Type::get_applicant_data( $applicant_id );
+
+		ob_start();
+		echo '<div class="smd-member-billing smd-member-billing-compact">';
+
+		if ( 'approved_awaiting_billing' === $fields['status'] && SMD_Stripe::is_enabled() ) {
+			echo '<p>' . esc_html__( 'Your membership is approved. The last step is setting up your recurring membership billing.', 'strong-members-directory' ) . '</p>';
+			echo '<a class="smd-billing-button smd-billing-button-link" href="' . esc_url( SMD_Stripe::get_applicant_billing_action_url( $applicant_id ) ) . '">' . esc_html__( 'Set Up Membership Billing', 'strong-members-directory' ) . '</a>';
+		} elseif ( 'approved_awaiting_interest' === $fields['status'] && SMD_Applications::get_applicant_onboarding_url( $applicant_id ) ) {
+			echo '<p>' . esc_html__( 'Your membership is approved. Please confirm your interest to continue.', 'strong-members-directory' ) . '</p>';
+			echo '<a class="smd-billing-button smd-billing-button-link" href="' . esc_url( SMD_Applications::get_applicant_onboarding_url( $applicant_id ) ) . '">' . esc_html__( 'Continue', 'strong-members-directory' ) . '</a>';
+		} else {
+			echo '<p>' . esc_html__( 'There is nothing to set up right now. Someone from 100 Strong will be in touch with next steps.', 'strong-members-directory' ) . '</p>';
+		}
+
+		echo '</div>';
+
+		return (string) ob_get_clean();
+	}
+
+	/**
+	 * The "email me a secure link" form.
+	 *
+	 * @param bool $link_problem Whether a signed link was present but invalid or expired.
+	 * @return string
+	 */
+	private static function render_billing_link_form( $link_problem ) {
+		$sent  = isset( $_GET['smd_link_sent'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$error = isset( $_GET['smd_link_error'] ) ? sanitize_text_field( rawurldecode( wp_unslash( $_GET['smd_link_error'] ) ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+		ob_start();
+		?>
+		<div class="smd-member-billing">
+			<?php if ( $sent ) : ?>
+				<p class="smd-member-billing-notice"><?php esc_html_e( 'If that email address belongs to a 100 Strong member or approved applicant, a secure billing link is on its way. Check your inbox in a few minutes.', 'strong-members-directory' ); ?></p>
+			<?php else : ?>
+				<?php if ( $link_problem ) : ?>
+					<p class="smd-member-profile-error"><?php esc_html_e( 'That link has expired. Enter your email and we will send a new one.', 'strong-members-directory' ); ?></p>
+				<?php endif; ?>
+				<?php if ( $error ) : ?>
+					<p class="smd-member-profile-error"><?php echo esc_html( $error ); ?></p>
+				<?php endif; ?>
+				<p><?php esc_html_e( 'Enter the email address you use with 100 Strong and we will email you a secure link to start or manage your membership billing.', 'strong-members-directory' ); ?></p>
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+					<input type="hidden" name="action" value="smd_request_billing_link">
+					<?php wp_nonce_field( 'smd_request_billing_link', 'smd_request_billing_link_nonce' ); ?>
+					<p style="position:absolute;left:-9999px;" aria-hidden="true"><label>Website <input type="text" name="smd_website" tabindex="-1" autocomplete="off"></label></p>
+					<p><label for="smd-billing-email"><?php esc_html_e( 'Email address', 'strong-members-directory' ); ?></label><br><input type="email" id="smd-billing-email" name="smd_billing_email" required autocomplete="email"></p>
+					<p><button type="submit" class="smd-billing-button"><?php esc_html_e( 'Email Me a Billing Link', 'strong-members-directory' ); ?></button></p>
+				</form>
+			<?php endif; ?>
+		</div>
+		<?php
+
+		return (string) ob_get_clean();
+	}
+
+	/**
+	 * Email a signed billing link. The response never reveals whether the address matched.
+	 */
+	public static function handle_billing_link_request() {
+		$page_url = SMD_Settings::get_billing_url() ? SMD_Settings::get_billing_url() : home_url( '/' );
+
+		if ( ! isset( $_POST['smd_request_billing_link_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['smd_request_billing_link_nonce'] ) ), 'smd_request_billing_link' ) ) {
+			wp_safe_redirect( add_query_arg( 'smd_link_error', rawurlencode( __( 'That page timed out. Please try again.', 'strong-members-directory' ) ), $page_url ) );
+			exit;
+		}
+
+		$sent_url = add_query_arg( 'smd_link_sent', '1', $page_url );
+
+		// Honeypot: bots fill the hidden field. Pretend success.
+		if ( ! empty( $_POST['smd_website'] ) ) {
+			wp_safe_redirect( $sent_url );
+			exit;
+		}
+
+		$email = isset( $_POST['smd_billing_email'] ) ? sanitize_email( wp_unslash( $_POST['smd_billing_email'] ) ) : '';
+		if ( '' === $email || ! is_email( $email ) ) {
+			wp_safe_redirect( add_query_arg( 'smd_link_error', rawurlencode( __( 'Please enter a valid email address.', 'strong-members-directory' ) ), $page_url ) );
+			exit;
+		}
+
+		// Throttle per address (1/minute) and per IP (10/hour).
+		$email_key = 'smd_bl_' . md5( strtolower( $email ) );
+		$ip_key    = 'smd_bli_' . md5( isset( $_SERVER['REMOTE_ADDR'] ) ? (string) wp_unslash( $_SERVER['REMOTE_ADDR'] ) : '' );
+		$ip_count  = (int) get_transient( $ip_key );
+
+		if ( get_transient( $email_key ) || $ip_count >= 10 ) {
+			wp_safe_redirect( $sent_url );
+			exit;
+		}
+
+		set_transient( $email_key, 1, MINUTE_IN_SECONDS );
+		set_transient( $ip_key, $ip_count + 1, HOUR_IN_SECONDS );
+
+		$link = '';
+		$name = '';
+
+		$member_id = SMD_Member_Post_Type::find_existing_member( $email, '', '' );
+		if ( $member_id ) {
+			$fields = SMD_Member_Post_Type::get_member_data( $member_id );
+			if ( 0 === strcasecmp( (string) $fields['email'], $email ) ) {
+				$link = SMD_Stripe::get_billing_hub_url( 'member', $member_id );
+				$name = (string) $fields['first_name'];
+			}
+		}
+
+		if ( '' === $link ) {
+			$applicants = get_posts(
+				array(
+					'post_type'      => SMD_Applicant_Post_Type::POST_TYPE,
+					'post_status'    => 'any',
+					'fields'         => 'ids',
+					'posts_per_page' => 1,
+					'orderby'        => 'date',
+					'order'          => 'DESC',
+					'meta_query'     => array(
+						'relation' => 'AND',
+						array(
+							'key'   => '_smd_applicant_email',
+							'value' => $email,
+						),
+						array(
+							'key'     => '_smd_applicant_status',
+							'value'   => array( 'approved_awaiting_interest', 'approved_awaiting_billing' ),
+							'compare' => 'IN',
+						),
+					),
+				)
+			);
+
+			if ( ! empty( $applicants[0] ) ) {
+				$link = SMD_Stripe::get_billing_hub_url( 'applicant', (int) $applicants[0] );
+				$name = (string) get_post_meta( (int) $applicants[0], '_smd_applicant_first_name', true );
+			}
+		}
+
+		if ( '' !== $link ) {
+			$subject = __( 'Your 100 Strong billing link', 'strong-members-directory' );
+			$message = sprintf(
+				/* translators: 1: first name, 2: billing link */
+				__( "Hi %1\$s,\n\nUse the secure link below to start or manage your 100 Strong membership billing. It works for 24 hours.\n\n%2\$s\n\nIf you did not request this, you can ignore this email.\n\n100 Strong", 'strong-members-directory' ),
+				'' !== $name ? $name : __( 'there', 'strong-members-directory' ),
+				$link
+			);
+			wp_mail( $email, $subject, $message );
+		}
+
+		wp_safe_redirect( $sent_url );
+		exit;
 	}
 
 	/**

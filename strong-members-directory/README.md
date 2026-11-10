@@ -59,6 +59,16 @@ The plugin includes a Stripe module for importing subscription data and syncing 
 
 A Stripe secret key must be configured under **Members > Settings** for this feature to work.
 
+## Self-Serve Billing Page
+
+A public **Membership Billing** page (`/billing`, shortcode `[strong_billing]`) is created on activation, so members and approved applicants can handle billing on the site instead of being sent Stripe links by hand:
+
+- Logged-in members see their status and a **Start Membership Subscription** or **Manage Billing** button.
+- Anyone else enters their email and is emailed a secure link (valid 24 hours). The page never reveals whether an address matched, and requests are rate limited.
+- Approved applicants who open the link get the same billing setup step as the onboarding page.
+
+Link the 100 Strong site menu, emails, or QR codes to `/billing`. The page ID is stored in the `smd_billing_page_id` option.
+
 ## Elementor Usage
 
 Use either approach:
