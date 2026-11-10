@@ -408,6 +408,7 @@ class SMD_Shortcodes {
 		$directory_url = home_url( '/members/' );
 		$dashboard_url = SMD_Settings::get_dashboard_url();
 		$can_edit      = is_user_logged_in() && SMD_Auth::user_can_edit_member( get_current_user_id(), $post_id );
+		$visibility    = SMD_Member_Post_Type::get_visibility( $post_id );
 		$edit_section  = isset( $_GET['smd_edit_section'] ) ? sanitize_key( wp_unslash( $_GET['smd_edit_section'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$profile_error = isset( $_GET['smd_profile_error'] ) ? sanitize_text_field( rawurldecode( wp_unslash( $_GET['smd_profile_error'] ) ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$billing_notice = isset( $_GET['smd_billing_notice'] ) ? sanitize_text_field( rawurldecode( wp_unslash( $_GET['smd_billing_notice'] ) ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
@@ -467,9 +468,9 @@ class SMD_Shortcodes {
 									<span class="smd-member-detail-label"><?php esc_html_e( 'Last Name', 'strong-members-directory' ); ?></span>
 									<span class="smd-member-detail-value"><?php echo esc_html( $fields['last_name'] ); ?></span>
 								</div>
-								<?php if ( $fields['email'] ) : ?>
+								<?php if ( $fields['email'] && SMD_Member_Post_Type::viewer_can_see( $post_id, 'email' ) ) : ?>
 									<div class="smd-member-detail-row">
-										<span class="smd-member-detail-label"><?php esc_html_e( 'Email', 'strong-members-directory' ); ?></span>
+										<span class="smd-member-detail-label"><?php esc_html_e( 'Email', 'strong-members-directory' ); ?><?php echo ( $can_edit && empty( $visibility['email'] ) ) ? ' <em class="smd-private-note">' . esc_html__( '(only you see this)', 'strong-members-directory' ) . '</em>' : ''; ?></span>
 										<span class="smd-member-detail-value"><a href="mailto:<?php echo esc_attr( antispambot( $fields['email'] ) ); ?>"><?php echo esc_html( antispambot( $fields['email'] ) ); ?></a></span>
 									</div>
 								<?php endif; ?>
@@ -498,19 +499,19 @@ class SMD_Shortcodes {
 										<?php endif; ?>
 									</div>
 								<?php endif; ?>
-								<?php if ( $fields['phone'] ) : ?>
+								<?php if ( $fields['phone'] && SMD_Member_Post_Type::viewer_can_see( $post_id, 'phone' ) ) : ?>
 									<div class="smd-member-detail-row">
-										<span class="smd-member-detail-label"><?php esc_html_e( 'Phone', 'strong-members-directory' ); ?></span>
+										<span class="smd-member-detail-label"><?php esc_html_e( 'Phone', 'strong-members-directory' ); ?><?php echo ( $can_edit && empty( $visibility['phone'] ) ) ? ' <em class="smd-private-note">' . esc_html__( '(only you see this)', 'strong-members-directory' ) . '</em>' : ''; ?></span>
 										<span class="smd-member-detail-value"><?php echo esc_html( $fields['phone'] ); ?></span>
 									</div>
 								<?php endif; ?>
-								<?php if ( $fields['website'] ) : ?>
+								<?php if ( $fields['website'] && SMD_Member_Post_Type::viewer_can_see( $post_id, 'website' ) ) : ?>
 									<div class="smd-member-detail-row">
 										<span class="smd-member-detail-label"><?php esc_html_e( 'Website', 'strong-members-directory' ); ?></span>
 										<span class="smd-member-detail-value"><a href="<?php echo esc_url( $fields['website'] ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html( preg_replace( '#^https?://#', '', $fields['website'] ) ); ?></a></span>
 									</div>
 								<?php endif; ?>
-								<?php if ( $fields['linkedin'] ) : ?>
+								<?php if ( $fields['linkedin'] && SMD_Member_Post_Type::viewer_can_see( $post_id, 'linkedin' ) ) : ?>
 									<div class="smd-member-detail-row">
 										<span class="smd-member-detail-label"><?php esc_html_e( 'LinkedIn', 'strong-members-directory' ); ?></span>
 										<span class="smd-member-detail-value"><a href="<?php echo esc_url( $fields['linkedin'] ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'View Profile', 'strong-members-directory' ); ?></a></span>
@@ -519,6 +520,29 @@ class SMD_Shortcodes {
 							</div>
 							<?php if ( $bio ) : ?>
 								<div class="smd-member-bio smd-member-bio-profile"><?php echo wpautop( wp_kses_post( $bio ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></div>
+							<?php endif; ?>
+							<?php if ( $can_edit ) : ?>
+								<?php if ( 'details' === $edit_section ) : ?>
+									<form class="smd-details-form" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+										<?php wp_nonce_field( 'smd_frontend_member_update', 'smd_frontend_member_update_nonce' ); ?>
+										<input type="hidden" name="action" value="smd_update_member_profile">
+										<input type="hidden" name="member_id" value="<?php echo esc_attr( (string) $post_id ); ?>">
+										<input type="hidden" name="smd_update_type" value="details">
+										<p><label for="smd_phone_<?php echo esc_attr( (string) $post_id ); ?>"><?php esc_html_e( 'Phone', 'strong-members-directory' ); ?></label><br><input type="tel" id="smd_phone_<?php echo esc_attr( (string) $post_id ); ?>" name="smd_phone" value="<?php echo esc_attr( $fields['phone'] ); ?>"></p>
+										<p><label for="smd_linkedin_<?php echo esc_attr( (string) $post_id ); ?>"><?php esc_html_e( 'LinkedIn profile address', 'strong-members-directory' ); ?></label><br><input type="url" id="smd_linkedin_<?php echo esc_attr( (string) $post_id ); ?>" name="smd_linkedin" placeholder="https://www.linkedin.com/in/yourname" value="<?php echo esc_attr( $fields['linkedin'] ); ?>"></p>
+										<p><label for="smd_website_<?php echo esc_attr( (string) $post_id ); ?>"><?php esc_html_e( 'Website', 'strong-members-directory' ); ?></label><br><input type="url" id="smd_website_<?php echo esc_attr( (string) $post_id ); ?>" name="smd_website" value="<?php echo esc_attr( $fields['website'] ); ?>"></p>
+										<p><label for="smd_bio_<?php echo esc_attr( (string) $post_id ); ?>"><?php esc_html_e( 'About you', 'strong-members-directory' ); ?></label><br><textarea id="smd_bio_<?php echo esc_attr( (string) $post_id ); ?>" name="smd_bio" rows="6" maxlength="2000"><?php echo esc_textarea( wp_strip_all_tags( $bio ) ); ?></textarea></p>
+										<fieldset class="smd-visibility-choices">
+											<legend><?php esc_html_e( 'Show to other members', 'strong-members-directory' ); ?></legend>
+											<?php foreach ( array( 'email' => __( 'My email address', 'strong-members-directory' ), 'phone' => __( 'My phone number', 'strong-members-directory' ), 'linkedin' => __( 'My LinkedIn', 'strong-members-directory' ), 'website' => __( 'My website', 'strong-members-directory' ) ) as $vis_key => $vis_label ) : ?>
+												<label><input type="checkbox" name="smd_show[<?php echo esc_attr( $vis_key ); ?>]" value="1" <?php checked( $visibility[ $vis_key ] ); ?>> <?php echo esc_html( $vis_label ); ?></label><br>
+											<?php endforeach; ?>
+										</fieldset>
+										<p><button type="submit" class="smd-inline-save-button" style="background:#0f4c81;border:1px solid #0f4c81;border-radius:999px;color:#ffffff;"><?php esc_html_e( 'Save', 'strong-members-directory' ); ?></button> <a href="<?php echo esc_url( get_permalink( $post_id ) ); ?>"><?php esc_html_e( 'Cancel', 'strong-members-directory' ); ?></a></p>
+									</form>
+								<?php else : ?>
+									<p><a class="smd-inline-edit-trigger" href="<?php echo esc_url( add_query_arg( 'smd_edit_section', 'details', get_permalink( $post_id ) ) ); ?>">&#9998; <?php esc_html_e( 'Edit my contact details, bio and privacy', 'strong-members-directory' ); ?></a></p>
+								<?php endif; ?>
 							<?php endif; ?>
 							<?php if ( $profile_error ) : ?>
 								<p class="smd-member-profile-error"><?php echo esc_html( $profile_error ); ?></p>
@@ -636,17 +660,20 @@ class SMD_Shortcodes {
 	 */
 	private static function member_matches_search( $member_id, $search ) {
 		$fields = SMD_Member_Post_Type::get_member_data( $member_id );
+		// Hidden contact details must not be discoverable through search.
 		$haystack = array(
 			get_the_title( $member_id ),
 			(string) $fields['first_name'],
 			(string) $fields['last_name'],
-			(string) $fields['email'],
 			(string) $fields['occupation'],
 			(string) $fields['member_type'],
-			(string) $fields['phone'],
-			(string) $fields['website'],
-			(string) $fields['linkedin'],
 		);
+
+		foreach ( array( 'email', 'phone', 'website', 'linkedin' ) as $contact_field ) {
+			if ( SMD_Member_Post_Type::viewer_can_see( $member_id, $contact_field ) ) {
+				$haystack[] = (string) $fields[ $contact_field ];
+			}
+		}
 
 		$search = function_exists( 'mb_strtolower' ) ? mb_strtolower( $search ) : strtolower( $search );
 

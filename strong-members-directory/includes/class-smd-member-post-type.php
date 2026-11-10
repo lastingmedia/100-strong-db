@@ -109,6 +109,16 @@ class SMD_Member_Post_Type {
 				<td><input type="url" class="regular-text" id="smd_linkedin" name="smd_linkedin" value="<?php echo esc_attr( $fields['linkedin'] ); ?>"></td>
 			</tr>
 			<tr>
+				<th scope="row"><?php esc_html_e( 'Shown to other members', 'strong-members-directory' ); ?></th>
+				<td>
+					<?php $visibility = self::get_visibility( $post->ID ); ?>
+					<?php foreach ( array( 'email' => __( 'Email', 'strong-members-directory' ), 'phone' => __( 'Phone', 'strong-members-directory' ), 'linkedin' => __( 'LinkedIn', 'strong-members-directory' ), 'website' => __( 'Website', 'strong-members-directory' ) ) as $vis_key => $vis_label ) : ?>
+						<label style="display:inline-block;margin-right:14px"><input type="checkbox" name="smd_show[<?php echo esc_attr( $vis_key ); ?>]" value="1" <?php checked( $visibility[ $vis_key ] ); ?>> <?php echo esc_html( $vis_label ); ?></label>
+					<?php endforeach; ?>
+					<p class="description"><?php esc_html_e( 'Members choose this themselves on their profile. Administrators and the member always see everything.', 'strong-members-directory' ); ?></p>
+				</td>
+			</tr>
+			<tr>
 				<th scope="row"><?php esc_html_e( 'Member Login', 'strong-members-directory' ); ?></th>
 				<td>
 					<?php if ( ! empty( $fields['user_id'] ) ) : ?>
@@ -160,6 +170,71 @@ class SMD_Member_Post_Type {
 		);
 
 		self::update_member_meta( $post_id, $first_name, $last_name, $email, $occupation, $extra );
+		self::save_visibility( $post_id, isset( $_POST['smd_show'] ) && is_array( $_POST['smd_show'] ) ? array_map( 'absint', wp_unslash( $_POST['smd_show'] ) ) : array() );
+	}
+
+	/**
+	 * Contact fields a member can choose to show to other members, with their defaults.
+	 * Email and phone are private until the member opts in.
+	 *
+	 * @return array<string,bool>
+	 */
+	public static function visibility_defaults() {
+		return array(
+			'email'    => false,
+			'phone'    => false,
+			'linkedin' => true,
+			'website'  => true,
+		);
+	}
+
+	/**
+	 * A member's visibility choices (falls back to the defaults).
+	 *
+	 * @param int $post_id Member ID.
+	 * @return array<string,bool>
+	 */
+	public static function get_visibility( $post_id ) {
+		$visibility = self::visibility_defaults();
+
+		foreach ( $visibility as $field => $default ) {
+			$stored = get_post_meta( $post_id, '_smd_show_' . $field, true );
+
+			if ( '' !== $stored ) {
+				$visibility[ $field ] = '1' === (string) $stored;
+			}
+		}
+
+		return $visibility;
+	}
+
+	/**
+	 * Save visibility choices from checkbox input (unchecked = hidden).
+	 *
+	 * @param int   $post_id Member ID.
+	 * @param array $checked Map of field => truthy when checked.
+	 */
+	public static function save_visibility( $post_id, $checked ) {
+		foreach ( array_keys( self::visibility_defaults() ) as $field ) {
+			update_post_meta( $post_id, '_smd_show_' . $field, ! empty( $checked[ $field ] ) ? '1' : '0' );
+		}
+	}
+
+	/**
+	 * Whether the current viewer may see a contact field. Owners and admins always can.
+	 *
+	 * @param int    $post_id Member ID.
+	 * @param string $field   email|phone|linkedin|website.
+	 * @return bool
+	 */
+	public static function viewer_can_see( $post_id, $field ) {
+		$visibility = self::get_visibility( $post_id );
+
+		if ( ! empty( $visibility[ $field ] ) ) {
+			return true;
+		}
+
+		return is_user_logged_in() && class_exists( 'SMD_Auth' ) && SMD_Auth::user_can_edit_member( get_current_user_id(), $post_id );
 	}
 
 	/**

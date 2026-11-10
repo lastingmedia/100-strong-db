@@ -59,6 +59,15 @@ The plugin includes a Stripe module for importing subscription data and syncing 
 
 A Stripe secret key must be configured under **Members > Settings** for this feature to work.
 
+## Member Profile Details and Privacy
+
+Members edit their own profile from their profile page (**Edit my contact details, bio and privacy**):
+
+- Phone, LinkedIn, website and an "About you" bio (up to 2,000 characters). LinkedIn must be a linkedin.com address.
+- Each member chooses what other members see: email, phone, LinkedIn, website. **Email and phone are private until the member opts in**; LinkedIn and website are shown by default. Members and administrators always see everything on their own record.
+- Hidden details are also left out of directory search, so they cannot be found by searching for them.
+- Administrators can see and change these choices on the member record in WordPress. CSV import and export already include phone, website, LinkedIn and bio.
+
 ## Elementor Usage
 
 Use either approach:

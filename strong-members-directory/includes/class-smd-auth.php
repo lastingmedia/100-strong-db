@@ -403,7 +403,9 @@ class SMD_Auth {
 		$occupation = isset( $_POST['smd_occupation'] ) ? sanitize_text_field( wp_unslash( $_POST['smd_occupation'] ) ) : '';
 		$update_type = isset( $_POST['smd_update_type'] ) ? sanitize_key( wp_unslash( $_POST['smd_update_type'] ) ) : '';
 
-		if ( 'image' !== $update_type ) {
+		if ( 'details' === $update_type ) {
+			self::save_member_details( $member_id, $fields );
+		} elseif ( 'image' !== $update_type ) {
 			SMD_Member_Post_Type::update_member_meta(
 				$member_id,
 				(string) $fields['first_name'],
@@ -475,6 +477,59 @@ class SMD_Auth {
 			)
 		);
 		exit;
+	}
+
+	/**
+	 * Save the contact details, bio and visibility choices from the profile form.
+	 *
+	 * @param int   $member_id Member ID.
+	 * @param array $fields    Current member fields.
+	 */
+	private static function save_member_details( $member_id, $fields ) {
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- verified in handle_frontend_member_update().
+		$linkedin = isset( $_POST['smd_linkedin'] ) ? esc_url_raw( trim( wp_unslash( $_POST['smd_linkedin'] ) ) ) : '';
+		$website  = isset( $_POST['smd_website'] ) ? esc_url_raw( trim( wp_unslash( $_POST['smd_website'] ) ) ) : '';
+		$phone    = isset( $_POST['smd_phone'] ) ? sanitize_text_field( wp_unslash( $_POST['smd_phone'] ) ) : '';
+		$bio      = isset( $_POST['smd_bio'] ) ? wp_kses_post( wp_unslash( $_POST['smd_bio'] ) ) : '';
+		$checked  = isset( $_POST['smd_show'] ) && is_array( $_POST['smd_show'] ) ? array_map( 'absint', wp_unslash( $_POST['smd_show'] ) ) : array();
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		// LinkedIn must be a linkedin.com address so the field cannot be used to link elsewhere.
+		if ( '' !== $linkedin && ! preg_match( '#^https?://([a-z0-9-]+\.)*linkedin\.com(/|$)#i', $linkedin ) ) {
+			wp_safe_redirect(
+				add_query_arg(
+					array(
+						'smd_edit_section'  => 'details',
+						'smd_profile_error' => rawurlencode( __( 'Please enter a LinkedIn address, such as https://www.linkedin.com/in/yourname.', 'strong-members-directory' ) ),
+					),
+					get_permalink( $member_id )
+				)
+			);
+			exit;
+		}
+
+		$bio = mb_substr( $bio, 0, 2000 );
+
+		SMD_Member_Post_Type::update_member_meta(
+			$member_id,
+			(string) $fields['first_name'],
+			(string) $fields['last_name'],
+			(string) $fields['email'],
+			(string) $fields['occupation'],
+			array(
+				'phone'    => $phone,
+				'linkedin' => $linkedin,
+				'website'  => $website,
+			)
+		);
+		SMD_Member_Post_Type::save_visibility( $member_id, $checked );
+
+		wp_update_post(
+			array(
+				'ID'           => $member_id,
+				'post_content' => $bio,
+			)
+		);
 	}
 
 	/**
