@@ -57,7 +57,10 @@ class SMD_Settings {
 			'email_from_address'     => get_option( 'admin_email' ),
 			'workflow_admin_email'   => get_option( 'admin_email' ),
 			'onboarding_email_subject' => 'Your 100 Strong membership approval next steps',
-			'onboarding_email_body'    => "Hi {first_name},\n\nYour membership application has been approved by the board.\n\nPlease use the link below to confirm that you are still interested and complete your billing setup. Billing setup is the first required onboarding step before we create your full member account.\n\n{onboarding_url}\n\nWe are excited to have you join us.\n\n100 Strong",
+			'onboarding_email_body'    => "Hi {first_name},\n\nYour membership application has been approved by the board.\n\nPlease use the link below to confirm that you are still interested and complete your billing setup. Billing setup is the first required onboarding step before we create your full member account.\n\n{onboarding_url}\n\nWe are excited to have you join us.\n\nSomeone from the 100 Strong team will also be reaching out to you with next steps.\n\n100 Strong",
+			'board_size'               => 8,
+			'denial_email_subject'     => 'Your 100 Strong membership application',
+			'denial_email_body'        => "Hi {first_name},\n\nThank you for your interest in 100 Strong and for taking the time to apply.\n\nAfter careful consideration, the board is not able to move your application forward at this time. We truly appreciate your interest and encourage you to stay connected with us.\n\n100 Strong",
 			'welcome_email_subject'    => 'Welcome to 100 Strong',
 			'welcome_email_body'       => "Hi {first_name},\n\nYour membership billing is complete and your member account is now active.\n\nYou should also receive a WordPress password setup email shortly if your account is new. Once you set your password, you can log in here:\n{dashboard_url}\n\nWelcome to 100 Strong.\n",
 			'password_setup_email_subject' => 'Set up your 100 Strong account',
@@ -382,6 +385,30 @@ class SMD_Settings {
 		);
 
 		add_settings_field(
+			'board_size',
+			__( 'Board Size', 'strong-members-directory' ),
+			array( __CLASS__, 'render_board_size_field' ),
+			'smd-settings',
+			'smd_email_settings'
+		);
+
+		add_settings_field(
+			'denial_email_subject',
+			__( 'Denial Email Subject', 'strong-members-directory' ),
+			array( __CLASS__, 'render_denial_email_subject_field' ),
+			'smd-settings',
+			'smd_email_settings'
+		);
+
+		add_settings_field(
+			'denial_email_body',
+			__( 'Denial Email Body', 'strong-members-directory' ),
+			array( __CLASS__, 'render_denial_email_body_field' ),
+			'smd-settings',
+			'smd_email_settings'
+		);
+
+		add_settings_field(
 			'welcome_email_subject',
 			__( 'Welcome Email Subject', 'strong-members-directory' ),
 			array( __CLASS__, 'render_welcome_email_subject_field' ),
@@ -516,6 +543,9 @@ class SMD_Settings {
 			'workflow_admin_email'  => isset( $input['workflow_admin_email'] ) ? sanitize_email( wp_unslash( $input['workflow_admin_email'] ) ) : get_option( 'admin_email' ),
 			'onboarding_email_subject' => isset( $input['onboarding_email_subject'] ) ? sanitize_text_field( wp_unslash( $input['onboarding_email_subject'] ) ) : $defaults['onboarding_email_subject'],
 			'onboarding_email_body'    => isset( $input['onboarding_email_body'] ) ? wp_kses_post( wp_unslash( $input['onboarding_email_body'] ) ) : $defaults['onboarding_email_body'],
+			'board_size'               => isset( $input['board_size'] ) ? max( 1, min( 50, (int) $input['board_size'] ) ) : $defaults['board_size'],
+			'denial_email_subject'     => isset( $input['denial_email_subject'] ) ? sanitize_text_field( wp_unslash( $input['denial_email_subject'] ) ) : $defaults['denial_email_subject'],
+			'denial_email_body'        => isset( $input['denial_email_body'] ) ? wp_kses_post( wp_unslash( $input['denial_email_body'] ) ) : $defaults['denial_email_body'],
 			'welcome_email_subject'    => isset( $input['welcome_email_subject'] ) ? sanitize_text_field( wp_unslash( $input['welcome_email_subject'] ) ) : $defaults['welcome_email_subject'],
 			'welcome_email_body'       => isset( $input['welcome_email_body'] ) ? wp_kses_post( wp_unslash( $input['welcome_email_body'] ) ) : $defaults['welcome_email_body'],
 			'password_setup_email_subject' => isset( $input['password_setup_email_subject'] ) ? sanitize_text_field( wp_unslash( $input['password_setup_email_subject'] ) ) : $defaults['password_setup_email_subject'],
@@ -988,6 +1018,38 @@ class SMD_Settings {
 		?>
 		<textarea rows="8" class="large-text" name="<?php echo esc_attr( self::OPTION_KEY ); ?>[onboarding_email_body]"><?php echo esc_textarea( (string) $settings['onboarding_email_body'] ); ?></textarea>
 		<p class="description"><?php esc_html_e( 'Available merge tags: {first_name}, {last_name}, {full_name}, {onboarding_url}.', 'strong-members-directory' ); ?></p>
+		<?php
+	}
+
+	/**
+	 * Render board size field.
+	 */
+	public static function render_board_size_field() {
+		$settings = self::get_settings();
+		?>
+		<input type="number" min="1" max="50" class="small-text" name="<?php echo esc_attr( self::OPTION_KEY ); ?>[board_size]" value="<?php echo esc_attr( (string) $settings['board_size'] ); ?>">
+		<p class="description"><?php esc_html_e( 'Number of voting board members. A majority of this number (more than half) is needed to approve or deny an application.', 'strong-members-directory' ); ?></p>
+		<?php
+	}
+
+	/**
+	 * Render denial email subject field.
+	 */
+	public static function render_denial_email_subject_field() {
+		$settings = self::get_settings();
+		?>
+		<input type="text" class="large-text" name="<?php echo esc_attr( self::OPTION_KEY ); ?>[denial_email_subject]" value="<?php echo esc_attr( (string) $settings['denial_email_subject'] ); ?>">
+		<?php
+	}
+
+	/**
+	 * Render denial email body field.
+	 */
+	public static function render_denial_email_body_field() {
+		$settings = self::get_settings();
+		?>
+		<textarea rows="8" class="large-text" name="<?php echo esc_attr( self::OPTION_KEY ); ?>[denial_email_body]"><?php echo esc_textarea( (string) $settings['denial_email_body'] ); ?></textarea>
+		<p class="description"><?php esc_html_e( 'Sent automatically when the board vote denies an application. Merge tags: {first_name}, {last_name}, {full_name}.', 'strong-members-directory' ); ?></p>
 		<?php
 	}
 

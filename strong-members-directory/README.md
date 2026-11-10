@@ -59,6 +59,18 @@ The plugin includes a Stripe module for importing subscription data and syncing 
 
 A Stripe secret key must be configured under **Members > Settings** for this feature to work.
 
+## Board Voting
+
+The board votes in person; the site records the result. On an applicant record, the **Board Vote** box takes the Yes / No / Abstain counts:
+
+- A majority of the whole board (more than half of **Members > Settings > Board Size**, default 8, so 5 votes) decides the application.
+- Majority yes: status moves to approved and the applicant is emailed the approval, with their billing link and a note that the 100 Strong team will be in touch.
+- Majority no: status moves to declined and the denial email is sent.
+- No majority yet: the tally is saved and the applicant stays in Board Review. Record again when the vote is confirmed.
+- The vote cannot be re-recorded once a final decision is made, and the totals cannot exceed the board size.
+
+Edit the approval and denial wording under **Settings > Emails**.
+
 ## Elementor Usage
 
 Use either approach:
