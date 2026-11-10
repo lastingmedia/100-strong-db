@@ -98,6 +98,14 @@ Administrators can run billing without opening the Stripe dashboard. On any memb
 The **Members** list has a **Billing** column and a filter for Active, In grace period, Past due, Lapsed, Canceled and No subscription.
 
 All actions require an administrator account. Refunds and receipts are checked to belong to that member's Stripe customer, and refunds use an idempotency key so a double click cannot refund twice. Members must be linked to a Stripe customer (by subscribing or via the Stripe import).
+## Member Profile Details and Privacy
+
+Members edit their own profile from their profile page (**Edit my contact details, bio and privacy**):
+
+- Phone, LinkedIn, website and an "About you" bio (up to 2,000 characters). LinkedIn must be a linkedin.com address.
+- Each member chooses what other members see: email, phone, LinkedIn, website. **Email and phone are private until the member opts in**; LinkedIn and website are shown by default. Members and administrators always see everything on their own record.
+- Hidden details are also left out of directory search, so they cannot be found by searching for them.
+- Administrators can see and change these choices on the member record in WordPress. CSV import and export already include phone, website, LinkedIn and bio.
 
 ## Elementor Usage
 
