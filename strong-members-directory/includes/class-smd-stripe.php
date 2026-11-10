@@ -614,8 +614,7 @@ class SMD_Stripe {
 		}
 
 		if ( in_array( $status, array( 'active', 'trialing' ), true ) ) {
-			delete_post_meta( $member_id, '_smd_payment_failed_at' );
-			delete_post_meta( $member_id, '_smd_payment_failed_note' );
+			SMD_Grace::restore( $member_id );
 		}
 	}
 
@@ -743,7 +742,6 @@ class SMD_Stripe {
 		}
 
 		update_post_meta( $member_id, '_smd_billing_status', 'payment_failed' );
-		update_post_meta( $member_id, '_smd_payment_failed_at', current_time( 'mysql' ) );
 		update_post_meta( $member_id, '_smd_payment_failed_note', $note );
 
 		if ( ! empty( $invoice['customer'] ) ) {
@@ -754,7 +752,22 @@ class SMD_Stripe {
 			update_post_meta( $member_id, '_smd_stripe_subscription_id', sanitize_text_field( (string) $invoice['subscription'] ) );
 		}
 
-		self::send_payment_failed_email( $member_id, $fields, $note );
+		// Stripe retries failed charges. Only the first failure starts the grace clock and notifies anyone.
+		if ( SMD_Grace::start_grace( $member_id ) ) {
+			self::send_payment_failed_email( $member_id, $fields, $note );
+
+			$name = trim( (string) $fields['first_name'] . ' ' . (string) $fields['last_name'] );
+			SMD_Grace::notify_team(
+				sprintf( /* translators: %s: member name */ __( 'Payment failed: %s', 'strong-members-directory' ), $name ),
+				sprintf(
+					/* translators: 1: name, 2: end date, 3: follow-up url */
+					__( "%1\$s's membership payment failed. Please follow up with them. Their access will be paused on %2\$s if billing is not updated.\n\nBilling follow-up list: %3\$s", 'strong-members-directory' ),
+					$name,
+					wp_date( get_option( 'date_format' ), SMD_Grace::get_grace_ends_at( $member_id ) ),
+					SMD_Grace::get_follow_up_url()
+				)
+			);
+		}
 	}
 
 	/**
@@ -770,8 +783,7 @@ class SMD_Stripe {
 		}
 
 		update_post_meta( $member_id, '_smd_billing_status', 'active' );
-		delete_post_meta( $member_id, '_smd_payment_failed_at' );
-		delete_post_meta( $member_id, '_smd_payment_failed_note' );
+		SMD_Grace::restore( $member_id );
 	}
 
 	/**
@@ -791,10 +803,11 @@ class SMD_Stripe {
 		$subject = __( 'Membership payment update needed', 'strong-members-directory' );
 		$message = sprintf(
 			/* translators: 1: first name, 2: note, 3: member profile url */
-			__( "Hi %1\$s,\n\nWe attempted to process your membership subscription payment, but it did not go through.\n\nDetails: %2\$s\n\nYour membership has not been automatically removed. Please log in and use the Manage Billing button to update your card details:\n%3\$s\n", 'strong-members-directory' ),
+			__( "Hi %1\$s,\n\nWe attempted to process your membership subscription payment, but it did not go through.\n\nDetails: %2\$s\n\nYour membership has not been removed. Please update your card details by %4\$s to keep your login, directory access and profile active. You can do that here:\n%3\$s\n", 'strong-members-directory' ),
 			(string) $fields['first_name'],
 			$note,
-			get_permalink( $member_id )
+			get_permalink( $member_id ),
+			wp_date( get_option( 'date_format' ), SMD_Grace::get_grace_ends_at( $member_id ) )
 		);
 
 		wp_mail( $email, $subject, $message );

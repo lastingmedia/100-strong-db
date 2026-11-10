@@ -59,6 +59,7 @@ class SMD_Shortcodes {
 		$current_job    = isset( $_GET['smd_occupation_filter'] ) ? sanitize_text_field( wp_unslash( $_GET['smd_occupation_filter'] ) ) : sanitize_text_field( (string) $atts['occupation'] ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
 		$query_args = array(
+			'smd_public_listing' => true,
 			'post_type'      => SMD_Member_Post_Type::POST_TYPE,
 			'post_status'    => 'publish',
 			'posts_per_page' => '' !== $current_search ? -1 : (int) $atts['limit'],

@@ -79,6 +79,13 @@ The board votes in person; the site records the result. On an applicant record, 
 - The vote cannot be re-recorded once a final decision is made, and the totals cannot exceed the board size.
 
 Edit the approval and denial wording under **Settings > Emails**.
+## Failed Payments and Grace Period
+
+- The first failed Stripe payment starts a grace clock (**Settings > Grace Period**, default 30 days). Later Stripe retries do not restart it.
+- The member is emailed the date their access ends, and the workflow admin email is notified so the team can follow up.
+- **Members > Billing Follow-up** lists everyone in grace (days left) or lapsed, with a **Reinstate** button.
+- If the grace period ends with no payment, the member is lapsed automatically (a daily check): they are logged out and cannot log in, they are removed from the directory, and their profile page is hidden. Administrators are never locked out.
+- A successful payment (Stripe `invoice.paid` or an active subscription) restores access automatically. **Reinstate** restores it manually; if the card is still failing, a new failure starts a new grace period.
 
 ## Elementor Usage
 

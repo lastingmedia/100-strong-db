@@ -48,6 +48,7 @@ class SMD_Settings {
 			'gravity_field_photo_release'  => '15.1',
 			'stripe_secret_key'      => '',
 			'stripe_price_id'        => '',
+			'grace_period_days'      => 30,
 			'stripe_webhook_secret'  => '',
 			'mailchimp_api_key'      => '',
 			'mailchimp_audience_id'  => '',
@@ -322,6 +323,14 @@ class SMD_Settings {
 		);
 
 		add_settings_field(
+			'grace_period_days',
+			__( 'Grace Period (days)', 'strong-members-directory' ),
+			array( __CLASS__, 'render_grace_period_days_field' ),
+			'smd-settings',
+			'smd_stripe_settings'
+		);
+
+		add_settings_field(
 			'stripe_price_id',
 			__( 'Quarterly Membership Price ID', 'strong-members-directory' ),
 			array( __CLASS__, 'render_stripe_price_id_field' ),
@@ -532,6 +541,7 @@ class SMD_Settings {
 			'gravity_field_photo'          => isset( $input['gravity_field_photo'] ) ? sanitize_text_field( wp_unslash( $input['gravity_field_photo'] ) ) : '',
 			'gravity_field_photo_release'  => isset( $input['gravity_field_photo_release'] ) ? sanitize_text_field( wp_unslash( $input['gravity_field_photo_release'] ) ) : '',
 			'stripe_secret_key'     => isset( $input['stripe_secret_key'] ) ? sanitize_text_field( wp_unslash( $input['stripe_secret_key'] ) ) : '',
+			'grace_period_days'     => isset( $input['grace_period_days'] ) ? max( 1, min( 365, (int) $input['grace_period_days'] ) ) : 30,
 			'stripe_price_id'       => isset( $input['stripe_price_id'] ) ? sanitize_text_field( wp_unslash( $input['stripe_price_id'] ) ) : '',
 			'stripe_webhook_secret' => isset( $input['stripe_webhook_secret'] ) ? sanitize_text_field( wp_unslash( $input['stripe_webhook_secret'] ) ) : '',
 			'mailchimp_api_key'     => isset( $input['mailchimp_api_key'] ) ? sanitize_text_field( wp_unslash( $input['mailchimp_api_key'] ) ) : '',
@@ -808,6 +818,17 @@ class SMD_Settings {
 		?>
 		<input type="password" class="regular-text" name="<?php echo esc_attr( self::OPTION_KEY ); ?>[stripe_secret_key]" value="<?php echo esc_attr( (string) $settings['stripe_secret_key'] ); ?>" autocomplete="off">
 		<p class="description"><?php esc_html_e( 'Use your Stripe secret key for the account that owns the quarterly membership subscription.', 'strong-members-directory' ); ?></p>
+		<?php
+	}
+
+	/**
+	 * Render Stripe price ID field.
+	 */
+	public static function render_grace_period_days_field() {
+		$settings = self::get_settings();
+		?>
+		<input type="number" min="1" max="365" class="small-text" name="<?php echo esc_attr( self::OPTION_KEY ); ?>[grace_period_days]" value="<?php echo esc_attr( (string) $settings['grace_period_days'] ); ?>">
+		<p class="description"><?php esc_html_e( 'Days a member keeps full access after a failed payment. After this, login, directory access and their profile are paused until they are reinstated or pay.', 'strong-members-directory' ); ?></p>
 		<?php
 	}
 

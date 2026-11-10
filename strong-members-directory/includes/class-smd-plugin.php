@@ -13,6 +13,7 @@ require_once SMD_PLUGIN_DIR . 'includes/class-smd-elementor.php';
 require_once SMD_PLUGIN_DIR . 'includes/class-smd-settings.php';
 require_once SMD_PLUGIN_DIR . 'includes/class-smd-auth.php';
 require_once SMD_PLUGIN_DIR . 'includes/class-smd-stripe.php';
+require_once SMD_PLUGIN_DIR . 'includes/class-smd-grace.php';
 
 class SMD_Plugin {
 	/**
@@ -73,6 +74,7 @@ class SMD_Plugin {
 	 * Deactivation hook.
 	 */
 	public static function deactivate() {
+		wp_clear_scheduled_hook( SMD_Grace::CRON_HOOK );
 		SMD_Auth::remove_role();
 		flush_rewrite_rules();
 	}
@@ -112,6 +114,7 @@ class SMD_Plugin {
 		SMD_Settings::hooks();
 		SMD_Auth::hooks();
 		SMD_Stripe::hooks();
+		SMD_Grace::hooks();
 	}
 
 	/**
