@@ -188,9 +188,10 @@ class SMD_Grace {
 				__( 'Your 100 Strong membership access has been paused', 'strong-members-directory' ),
 				sprintf(
 					/* translators: 1: first name, 2: grace days */
-					__( "Hi %1\$s,\n\nWe have not received an updated payment for your 100 Strong membership within %2\$d days, so your login, directory access and member profile have been paused.\n\nIf you update your payment information, please contact the 100 Strong team and we will restore your access.\n\n100 Strong", 'strong-members-directory' ),
+					__( "Hi %1\$s,\n\nWe have not received an updated payment for your 100 Strong membership within %2\$d days, so your login, directory access and member profile have been paused.\n\nTo restore your access, update your payment information here (no login needed) and the 100 Strong team will reinstate you:\n%3\$s\n\n100 Strong", 'strong-members-directory' ),
 					'' !== (string) $fields['first_name'] ? (string) $fields['first_name'] : __( 'there', 'strong-members-directory' ),
-					self::get_grace_days()
+					self::get_grace_days(),
+					SMD_Stripe::get_billing_hub_url( 'member', $member_id ) ?: home_url( '/' )
 				)
 			);
 		}

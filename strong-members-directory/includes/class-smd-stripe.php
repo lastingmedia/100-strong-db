@@ -803,10 +803,10 @@ class SMD_Stripe {
 		$subject = __( 'Membership payment update needed', 'strong-members-directory' );
 		$message = sprintf(
 			/* translators: 1: first name, 2: note, 3: member profile url */
-			__( "Hi %1\$s,\n\nWe attempted to process your membership subscription payment, but it did not go through.\n\nDetails: %2\$s\n\nYour membership has not been removed. Please update your card details by %4\$s to keep your login, directory access and profile active. You can do that here:\n%3\$s\n", 'strong-members-directory' ),
+			__( "Hi %1\$s,\n\nWe attempted to process your membership subscription payment, but it did not go through.\n\nDetails: %2\$s\n\nYour membership has not been removed. Please update your card details by %4\$s to keep your login, directory access and profile active. Use this secure link (it works for 24 hours, no login needed):\n%3\$s\n", 'strong-members-directory' ),
 			(string) $fields['first_name'],
 			$note,
-			get_permalink( $member_id ),
+			self::get_billing_hub_url( 'member', $member_id ) ?: get_permalink( $member_id ),
 			wp_date( get_option( 'date_format' ), SMD_Grace::get_grace_ends_at( $member_id ) )
 		);
 

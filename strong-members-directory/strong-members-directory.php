@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Strong Members Directory
  * Description: Member directory plugin with bulk CSV import and Elementor-friendly listings.
- * Version: 1.13.0
+ * Version: 1.14.0
  * Author: Lasting Media
  * Text Domain: strong-members-directory
  */
@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'SMD_VERSION', '1.13.0' );
+define( 'SMD_VERSION', '1.14.0' );
 define( 'SMD_PLUGIN_FILE', __FILE__ );
 define( 'SMD_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SMD_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
