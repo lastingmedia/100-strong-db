@@ -13,6 +13,7 @@ require_once SMD_PLUGIN_DIR . 'includes/class-smd-elementor.php';
 require_once SMD_PLUGIN_DIR . 'includes/class-smd-settings.php';
 require_once SMD_PLUGIN_DIR . 'includes/class-smd-auth.php';
 require_once SMD_PLUGIN_DIR . 'includes/class-smd-stripe.php';
+require_once SMD_PLUGIN_DIR . 'includes/class-smd-billing-admin.php';
 
 class SMD_Plugin {
 	/**
@@ -110,6 +111,7 @@ class SMD_Plugin {
 		SMD_Settings::hooks();
 		SMD_Auth::hooks();
 		SMD_Stripe::hooks();
+		SMD_Billing_Admin::hooks();
 	}
 
 	/**

@@ -59,6 +59,19 @@ The plugin includes a Stripe module for importing subscription data and syncing 
 
 A Stripe secret key must be configured under **Members > Settings** for this feature to work.
 
+## Managing Billing from WordPress
+
+Administrators can run billing without opening the Stripe dashboard. On any member record, the **Stripe Billing** panel loads live from Stripe:
+
+- Subscription status, plan and price, next charge date, and the card on file
+- Payment history: every invoice with its result (paid, failed with the decline reason and next retry, open, void) and any refunds
+- Actions: email the member an update-card link, pause or resume billing, cancel at period end (or undo it), cancel immediately, refund a payment in full or part, and email a receipt
+- A **Staff actions** log shows who did what and when
+
+The **Members** list has a **Billing** column and a filter for Active, In grace period, Past due, Lapsed, Canceled and No subscription.
+
+All actions require an administrator account. Refunds and receipts are checked to belong to that member's Stripe customer, and refunds use an idempotency key so a double click cannot refund twice. Members must be linked to a Stripe customer (by subscribing or via the Stripe import).
+
 ## Elementor Usage
 
 Use either approach:

@@ -1235,13 +1235,33 @@ class SMD_Stripe {
 	 * @param array  $body Request body.
 	 * @return array|WP_Error
 	 */
-	private static function stripe_request( $method, $path, $body = array() ) {
+	/**
+	 * Call the Stripe API from other plugin classes (admin billing panel).
+	 *
+	 * @param string $method  HTTP method.
+	 * @param string $path    API path such as /subscriptions/sub_123.
+	 * @param array  $body    Params (query string for GET, form body otherwise).
+	 * @param array  $headers Extra headers, e.g. an Idempotency-Key.
+	 * @return array|WP_Error
+	 */
+	public static function api( $method, $path, $body = array(), $headers = array() ) {
+		if ( ! self::is_enabled() && '' === self::get_secret_key() ) {
+			return new WP_Error( 'smd_stripe_not_configured', __( 'Stripe is not configured yet.', 'strong-members-directory' ) );
+		}
+
+		return self::stripe_request( $method, $path, $body, $headers );
+	}
+
+	private static function stripe_request( $method, $path, $body = array(), $extra_headers = array() ) {
 		$method = strtoupper( $method );
 		$args = array(
 			'method'  => $method,
 			'timeout' => 30,
-			'headers' => array(
-				'Authorization' => 'Bearer ' . self::get_secret_key(),
+			'headers' => array_merge(
+				array(
+					'Authorization' => 'Bearer ' . self::get_secret_key(),
+				),
+				$extra_headers
 			),
 		);
 
