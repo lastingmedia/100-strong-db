@@ -434,21 +434,39 @@ class SMD_Stripe {
 		$secret     = self::get_webhook_secret();
 		$event_data = json_decode( $payload, true );
 
-		if ( '' !== $secret ) {
-			$verification = self::verify_webhook_signature( $payload, $signature, $secret );
-			if ( is_wp_error( $verification ) ) {
-				return new WP_REST_Response(
-					array( 'error' => $verification->get_error_message() ),
-					400
-				);
-			}
+		// Never process unsigned events: without a secret anyone could forge billing updates.
+		if ( '' === $secret ) {
+			return new WP_REST_Response(
+				array( 'error' => __( 'Stripe webhook secret is not configured.', 'strong-members-directory' ) ),
+				503
+			);
+		}
+
+		$verification = self::verify_webhook_signature( $payload, $signature, $secret );
+		if ( is_wp_error( $verification ) ) {
+			return new WP_REST_Response(
+				array( 'error' => $verification->get_error_message() ),
+				400
+			);
 		}
 
 		if ( ! is_array( $event_data ) || empty( $event_data['type'] ) ) {
 			return new WP_REST_Response( array( 'received' => false ), 400 );
 		}
 
+		// Stripe retries deliveries, so skip events we have already handled.
+		$event_id = ! empty( $event_data['id'] ) ? sanitize_text_field( (string) $event_data['id'] ) : '';
+		$dedupe   = '' !== $event_id ? 'smd_stripe_evt_' . md5( $event_id ) : '';
+
+		if ( '' !== $dedupe && get_transient( $dedupe ) ) {
+			return new WP_REST_Response( array( 'received' => true, 'duplicate' => true ), 200 );
+		}
+
 		self::process_event( $event_data );
+
+		if ( '' !== $dedupe ) {
+			set_transient( $dedupe, 1, 3 * DAY_IN_SECONDS );
+		}
 
 		return new WP_REST_Response( array( 'received' => true ), 200 );
 	}
@@ -1379,27 +1397,40 @@ class SMD_Stripe {
 			return new WP_Error( 'smd_missing_signature', __( 'Missing Stripe signature header.', 'strong-members-directory' ) );
 		}
 
-		$parts      = array();
-		$signatures = explode( ',', $signature );
+		$parts          = array();
+		$v1_signatures  = array();
+		$signatures     = explode( ',', $signature );
 
 		foreach ( $signatures as $segment ) {
 			$pair = array_map( 'trim', explode( '=', $segment, 2 ) );
 			if ( 2 === count( $pair ) ) {
-				$parts[ $pair[0] ] = $pair[1];
+				if ( 'v1' === $pair[0] ) {
+					// Stripe may send several v1 values while a secret is being rotated.
+					$v1_signatures[] = $pair[1];
+				} else {
+					$parts[ $pair[0] ] = $pair[1];
+				}
 			}
 		}
 
-		if ( empty( $parts['t'] ) || empty( $parts['v1'] ) ) {
+		if ( empty( $parts['t'] ) || ! ctype_digit( (string) $parts['t'] ) || empty( $v1_signatures ) ) {
 			return new WP_Error( 'smd_invalid_signature', __( 'Invalid Stripe signature header.', 'strong-members-directory' ) );
+		}
+
+		// Reject old (replayed) deliveries. Stripe's own libraries default to 5 minutes.
+		if ( abs( time() - (int) $parts['t'] ) > 300 ) {
+			return new WP_Error( 'smd_signature_expired', __( 'Stripe webhook timestamp is outside the allowed window.', 'strong-members-directory' ) );
 		}
 
 		$expected = hash_hmac( 'sha256', $parts['t'] . '.' . $payload, $secret );
 
-		if ( ! hash_equals( $expected, $parts['v1'] ) ) {
-			return new WP_Error( 'smd_signature_mismatch', __( 'Stripe webhook signature check failed.', 'strong-members-directory' ) );
+		foreach ( $v1_signatures as $candidate ) {
+			if ( hash_equals( $expected, $candidate ) ) {
+				return true;
+			}
 		}
 
-		return true;
+		return new WP_Error( 'smd_signature_mismatch', __( 'Stripe webhook signature check failed.', 'strong-members-directory' ) );
 	}
 
 	/**
