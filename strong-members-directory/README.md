@@ -86,6 +86,18 @@ Edit the approval and denial wording under **Settings > Emails**.
 - **Members > Billing Follow-up** lists everyone in grace (days left) or lapsed, with a **Reinstate** button.
 - If the grace period ends with no payment, the member is lapsed automatically (a daily check): they are logged out and cannot log in, they are removed from the directory, and their profile page is hidden. Administrators are never locked out.
 - A successful payment (Stripe `invoice.paid` or an active subscription) restores access automatically. **Reinstate** restores it manually; if the card is still failing, a new failure starts a new grace period.
+## Managing Billing from WordPress
+
+Administrators can run billing without opening the Stripe dashboard. On any member record, the **Stripe Billing** panel loads live from Stripe:
+
+- Subscription status, plan and price, next charge date, and the card on file
+- Payment history: every invoice with its result (paid, failed with the decline reason and next retry, open, void) and any refunds
+- Actions: email the member an update-card link, pause or resume billing, cancel at period end (or undo it), cancel immediately, refund a payment in full or part, and email a receipt
+- A **Staff actions** log shows who did what and when
+
+The **Members** list has a **Billing** column and a filter for Active, In grace period, Past due, Lapsed, Canceled and No subscription.
+
+All actions require an administrator account. Refunds and receipts are checked to belong to that member's Stripe customer, and refunds use an idempotency key so a double click cannot refund twice. Members must be linked to a Stripe customer (by subscribing or via the Stripe import).
 
 ## Elementor Usage
 

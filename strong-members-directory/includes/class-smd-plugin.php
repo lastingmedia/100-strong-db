@@ -13,7 +13,11 @@ require_once SMD_PLUGIN_DIR . 'includes/class-smd-elementor.php';
 require_once SMD_PLUGIN_DIR . 'includes/class-smd-settings.php';
 require_once SMD_PLUGIN_DIR . 'includes/class-smd-auth.php';
 require_once SMD_PLUGIN_DIR . 'includes/class-smd-stripe.php';
+<<<<<<< HEAD
 require_once SMD_PLUGIN_DIR . 'includes/class-smd-grace.php';
+=======
+require_once SMD_PLUGIN_DIR . 'includes/class-smd-billing-admin.php';
+>>>>>>> feat/stripe-admin-panel
 
 class SMD_Plugin {
 	/**
@@ -114,7 +118,11 @@ class SMD_Plugin {
 		SMD_Settings::hooks();
 		SMD_Auth::hooks();
 		SMD_Stripe::hooks();
+<<<<<<< HEAD
 		SMD_Grace::hooks();
+=======
+		SMD_Billing_Admin::hooks();
+>>>>>>> feat/stripe-admin-panel
 	}
 
 	/**
