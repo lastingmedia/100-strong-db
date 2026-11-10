@@ -1539,6 +1539,57 @@ class SMD_Stripe {
 	}
 
 	/**
+	 * Build a signed link to the public billing page for a member or applicant.
+	 *
+	 * The link lets someone who is not logged in reach their billing options. It
+	 * only reveals the page; every billing action it offers is signed separately.
+	 *
+	 * @param string $subject_type 'member' or 'applicant'.
+	 * @param int    $subject_id   Post ID.
+	 * @return string Empty string when no billing page exists.
+	 */
+	public static function get_billing_hub_url( $subject_type, $subject_id ) {
+		$base_url = SMD_Settings::get_billing_url();
+		if ( '' === $base_url || ! in_array( $subject_type, array( 'member', 'applicant' ), true ) ) {
+			return '';
+		}
+
+		$expires = time() + DAY_IN_SECONDS;
+
+		return add_query_arg(
+			array(
+				'smd_hub'         => $subject_type,
+				'smd_hub_id'      => (int) $subject_id,
+				'smd_hub_expires' => $expires,
+				'smd_hub_sig'     => self::generate_billing_action_signature( 'billing_hub', $subject_type, $subject_id, $expires ),
+			),
+			$base_url
+		);
+	}
+
+	/**
+	 * Validate the signed billing-page link in the current request.
+	 *
+	 * @return array{type:string,id:int}|null
+	 */
+	public static function get_verified_billing_hub_subject() {
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended
+		$type      = isset( $_GET['smd_hub'] ) ? sanitize_key( wp_unslash( $_GET['smd_hub'] ) ) : '';
+		$id        = isset( $_GET['smd_hub_id'] ) ? (int) $_GET['smd_hub_id'] : 0;
+		$expires   = isset( $_GET['smd_hub_expires'] ) ? (int) $_GET['smd_hub_expires'] : 0;
+		$signature = isset( $_GET['smd_hub_sig'] ) ? (string) wp_unslash( $_GET['smd_hub_sig'] ) : '';
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+		if ( ! in_array( $type, array( 'member', 'applicant' ), true ) || ! $id || ! $expires || '' === $signature || time() > $expires ) {
+			return null;
+		}
+
+		$expected = self::generate_billing_action_signature( 'billing_hub', $type, $id, $expires );
+
+		return hash_equals( $expected, $signature ) ? array( 'type' => $type, 'id' => $id ) : null;
+	}
+
+	/**
 	 * Build a signed front-end URL for applicant billing setup.
 	 *
 	 * @param int $applicant_id Applicant ID.

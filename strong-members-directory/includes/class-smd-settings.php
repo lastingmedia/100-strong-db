@@ -1222,6 +1222,52 @@ class SMD_Settings {
 	}
 
 	/**
+	 * Get the public billing page URL.
+	 *
+	 * @return string
+	 */
+	public static function get_billing_url() {
+		$page_id = (int) get_option( 'smd_billing_page_id', 0 );
+
+		if ( ! $page_id || 'publish' !== get_post_status( $page_id ) ) {
+			return '';
+		}
+
+		return (string) get_permalink( $page_id );
+	}
+
+	/**
+	 * Ensure the public billing page exists.
+	 *
+	 * @return int
+	 */
+	public static function ensure_billing_page() {
+		$page_id = (int) get_option( 'smd_billing_page_id', 0 );
+		if ( $page_id && get_post( $page_id ) ) {
+			return $page_id;
+		}
+
+		$page_id = wp_insert_post(
+			array(
+				'post_title'   => __( 'Membership Billing', 'strong-members-directory' ),
+				'post_name'    => 'billing',
+				'post_type'    => 'page',
+				'post_status'  => 'publish',
+				'post_content' => '[strong_billing]',
+			),
+			true
+		);
+
+		if ( is_wp_error( $page_id ) ) {
+			return 0;
+		}
+
+		update_option( 'smd_billing_page_id', (int) $page_id );
+
+		return (int) $page_id;
+	}
+
+	/**
 	 * Ensure a default nomination page exists.
 	 *
 	 * @return int
