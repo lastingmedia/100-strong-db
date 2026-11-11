@@ -14,6 +14,9 @@ class SMD_Applications {
 		add_action( 'admin_menu', array( __CLASS__, 'reorder_members_submenu' ), 99 );
 		add_action( 'add_meta_boxes', array( __CLASS__, 'register_export_meta_box' ) );
 		add_action( 'add_meta_boxes', array( __CLASS__, 'register_workflow_meta_box' ) );
+		add_action( 'add_meta_boxes', array( __CLASS__, 'register_vote_meta_box' ) );
+		add_action( 'admin_post_smd_record_board_vote', array( __CLASS__, 'handle_board_vote' ) );
+		add_action( 'admin_notices', array( __CLASS__, 'render_vote_notices' ) );
 		add_action( 'admin_post_smd_applicant_workflow_action', array( __CLASS__, 'handle_workflow_action' ) );
 		add_action( 'admin_post_smd_export_applicant_pdf', array( __CLASS__, 'handle_export_applicant_pdf' ) );
 		add_action( 'gform_after_submission', array( __CLASS__, 'maybe_capture_gravity_application' ), 10, 2 );
@@ -96,6 +99,222 @@ class SMD_Applications {
 			SMD_Applicant_Post_Type::POST_TYPE,
 			'side',
 			'high'
+		);
+	}
+
+	/**
+	 * Register the board vote metabox.
+	 */
+	public static function register_vote_meta_box() {
+		add_meta_box(
+			'smd-applicant-board-vote',
+			__( 'Board Vote', 'strong-members-directory' ),
+			array( __CLASS__, 'render_vote_meta_box' ),
+			SMD_Applicant_Post_Type::POST_TYPE,
+			'side',
+			'high'
+		);
+	}
+
+	/**
+	 * Votes needed for a majority of the whole board.
+	 *
+	 * @return int
+	 */
+	public static function get_votes_needed() {
+		$settings = SMD_Settings::get_settings();
+		$size     = isset( $settings['board_size'] ) ? max( 1, (int) $settings['board_size'] ) : 8;
+
+		return (int) floor( $size / 2 ) + 1;
+	}
+
+	/**
+	 * Decide the outcome of a tally.
+	 *
+	 * @param int $yes Yes votes.
+	 * @param int $no  No votes.
+	 * @return string 'approved', 'denied' or 'no_majority'.
+	 */
+	public static function get_vote_outcome( $yes, $no ) {
+		$needed = self::get_votes_needed();
+
+		if ( (int) $yes >= $needed ) {
+			return 'approved';
+		}
+
+		if ( (int) $no >= $needed ) {
+			return 'denied';
+		}
+
+		return 'no_majority';
+	}
+
+	/**
+	 * Render the board vote metabox.
+	 *
+	 * @param WP_Post $post Applicant post.
+	 */
+	public static function render_vote_meta_box( $post ) {
+		$status = (string) get_post_meta( $post->ID, '_smd_applicant_status', true );
+		$yes    = (int) get_post_meta( $post->ID, '_smd_applicant_votes_yes', true );
+		$no     = (int) get_post_meta( $post->ID, '_smd_applicant_votes_no', true );
+		$abs    = (int) get_post_meta( $post->ID, '_smd_applicant_votes_abstain', true );
+		$when   = (string) get_post_meta( $post->ID, '_smd_applicant_vote_recorded_at', true );
+		$closed = in_array( $status, array( 'approved_awaiting_interest', 'approved_awaiting_billing', 'onboarded', 'declined' ), true );
+		$size   = (int) ( SMD_Settings::get_settings()['board_size'] ?? 8 );
+		?>
+		<div class="smd-admin-panel smd-admin-panel-tight">
+			<p class="smd-admin-help-copy">
+				<?php
+				echo esc_html(
+					sprintf(
+						/* translators: 1: votes needed, 2: board size */
+						__( 'A majority needs %1$d of %2$d board votes.', 'strong-members-directory' ),
+						self::get_votes_needed(),
+						$size
+					)
+				);
+				?>
+			</p>
+			<?php if ( $closed ) : ?>
+				<p><strong><?php esc_html_e( 'Final tally:', 'strong-members-directory' ); ?></strong>
+					<?php echo esc_html( sprintf( __( 'Yes %1$d, No %2$d, Abstain %3$d', 'strong-members-directory' ), $yes, $no, $abs ) ); ?>
+					<?php echo $when ? '<br><small>' . esc_html( $when ) . '</small>' : ''; ?></p>
+			<?php else : ?>
+				<?php
+				// This box sits inside the post editor's own <form>, so it cannot contain a nested form.
+				// A nonce-protected link is built from the three numbers instead (same pattern as the workflow buttons).
+				$vote_url = add_query_arg(
+					array(
+						'action'       => 'smd_record_board_vote',
+						'applicant_id' => (int) $post->ID,
+						'_wpnonce'     => wp_create_nonce( 'smd_record_board_vote_' . $post->ID ),
+					),
+					admin_url( 'admin-post.php' )
+				);
+				?>
+				<div id="smd-board-vote" data-url="<?php echo esc_url( $vote_url ); ?>">
+					<p><label>Yes <input type="number" min="0" max="<?php echo esc_attr( (string) $size ); ?>" id="smd-votes-yes" value="<?php echo esc_attr( (string) $yes ); ?>" class="small-text"></label></p>
+					<p><label>No <input type="number" min="0" max="<?php echo esc_attr( (string) $size ); ?>" id="smd-votes-no" value="<?php echo esc_attr( (string) $no ); ?>" class="small-text"></label></p>
+					<p><label>Abstain <input type="number" min="0" max="<?php echo esc_attr( (string) $size ); ?>" id="smd-votes-abstain" value="<?php echo esc_attr( (string) $abs ); ?>" class="small-text"></label></p>
+					<p class="smd-admin-help-copy"><?php esc_html_e( 'Recording a majority sends the applicant their approval or denial email right away.', 'strong-members-directory' ); ?></p>
+					<p><button type="button" class="button button-primary" id="smd-record-vote"><?php esc_html_e( 'Record Vote', 'strong-members-directory' ); ?></button></p>
+				</div>
+				<script>
+				document.getElementById('smd-record-vote').addEventListener('click', function () {
+					if (!window.confirm(<?php echo wp_json_encode( __( 'Record this vote? If it is a majority, the applicant is emailed immediately.', 'strong-members-directory' ) ); ?>)) { return; }
+					var box = document.getElementById('smd-board-vote');
+					var url = new URL(box.dataset.url, window.location.href);
+					url.searchParams.set('smd_votes_yes', document.getElementById('smd-votes-yes').value || 0);
+					url.searchParams.set('smd_votes_no', document.getElementById('smd-votes-no').value || 0);
+					url.searchParams.set('smd_votes_abstain', document.getElementById('smd-votes-abstain').value || 0);
+					window.location.href = url.toString();
+				});
+				</script>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Record a board vote and act on a majority.
+	 */
+	public static function handle_board_vote() {
+		$applicant_id = isset( $_GET['applicant_id'] ) ? (int) $_GET['applicant_id'] : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+		if ( ! $applicant_id || SMD_Applicant_Post_Type::POST_TYPE !== get_post_type( $applicant_id ) ) {
+			wp_die( esc_html__( 'Invalid applicant record.', 'strong-members-directory' ) );
+		}
+
+		if ( ! current_user_can( 'edit_post', $applicant_id ) ) {
+			wp_die( esc_html__( 'You do not have permission to update this applicant.', 'strong-members-directory' ) );
+		}
+
+		check_admin_referer( 'smd_record_board_vote_' . $applicant_id );
+
+		$status = (string) get_post_meta( $applicant_id, '_smd_applicant_status', true );
+		if ( in_array( $status, array( 'approved_awaiting_interest', 'approved_awaiting_billing', 'onboarded', 'declined' ), true ) ) {
+			wp_die( esc_html__( 'This application already has a final decision.', 'strong-members-directory' ) );
+		}
+
+		$yes     = isset( $_GET['smd_votes_yes'] ) ? max( 0, (int) $_GET['smd_votes_yes'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$no      = isset( $_GET['smd_votes_no'] ) ? max( 0, (int) $_GET['smd_votes_no'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$abstain = isset( $_GET['smd_votes_abstain'] ) ? max( 0, (int) $_GET['smd_votes_abstain'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$size    = (int) ( SMD_Settings::get_settings()['board_size'] ?? 8 );
+		$edit    = self::get_applicant_edit_url( $applicant_id );
+
+		if ( $yes + $no + $abstain > $size ) {
+			wp_safe_redirect( add_query_arg( 'smd_vote_error', rawurlencode( sprintf( __( 'Those votes add up to more than the %d board members.', 'strong-members-directory' ), $size ) ), $edit ) );
+			exit;
+		}
+
+		update_post_meta( $applicant_id, '_smd_applicant_votes_yes', $yes );
+		update_post_meta( $applicant_id, '_smd_applicant_votes_no', $no );
+		update_post_meta( $applicant_id, '_smd_applicant_votes_abstain', $abstain );
+		update_post_meta( $applicant_id, '_smd_applicant_vote_recorded_at', current_time( 'mysql' ) );
+		update_post_meta( $applicant_id, '_smd_applicant_vote_recorded_by', get_current_user_id() );
+
+		$outcome = self::get_vote_outcome( $yes, $no );
+
+		if ( 'approved' === $outcome ) {
+			update_post_meta( $applicant_id, '_smd_applicant_status', 'approved_awaiting_interest' );
+			self::send_onboarding_email( $applicant_id );
+			$message = __( 'Majority reached: approved. The applicant was emailed their approval and next steps.', 'strong-members-directory' );
+		} elseif ( 'denied' === $outcome ) {
+			update_post_meta( $applicant_id, '_smd_applicant_status', 'declined' );
+			self::send_denial_email( $applicant_id );
+			$message = __( 'Majority reached: denied. The applicant was emailed.', 'strong-members-directory' );
+		} else {
+			update_post_meta( $applicant_id, '_smd_applicant_status', 'board_review' );
+			$message = sprintf( __( 'Vote saved. No majority yet (%d needed to decide).', 'strong-members-directory' ), self::get_votes_needed() );
+		}
+
+		wp_safe_redirect( add_query_arg( 'smd_vote_notice', rawurlencode( $message ), $edit ) );
+		exit;
+	}
+
+	/**
+	 * Show vote results on the applicant edit screen.
+	 */
+	public static function render_vote_notices() {
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( ! $screen || SMD_Applicant_Post_Type::POST_TYPE !== $screen->post_type ) {
+			return;
+		}
+
+		if ( ! empty( $_GET['smd_vote_notice'] ) ) {
+			echo '<div class="notice notice-success is-dismissible"><p>' . esc_html( sanitize_text_field( rawurldecode( wp_unslash( $_GET['smd_vote_notice'] ) ) ) ) . '</p></div>';
+		}
+
+		if ( ! empty( $_GET['smd_vote_error'] ) ) {
+			echo '<div class="notice notice-error is-dismissible"><p>' . esc_html( sanitize_text_field( rawurldecode( wp_unslash( $_GET['smd_vote_error'] ) ) ) ) . '</p></div>';
+		}
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+	}
+
+	/**
+	 * Send the denial email.
+	 *
+	 * @param int $applicant_id Applicant ID.
+	 */
+	private static function send_denial_email( $applicant_id ) {
+		$fields = SMD_Applicant_Post_Type::get_applicant_data( $applicant_id );
+		$email  = isset( $fields['email'] ) ? (string) $fields['email'] : '';
+
+		if ( '' === $email || ! is_email( $email ) ) {
+			return;
+		}
+
+		self::send_configured_email(
+			$email,
+			'denial_email_subject',
+			'denial_email_body',
+			array(
+				'{first_name}' => $fields['first_name'] ? (string) $fields['first_name'] : __( 'there', 'strong-members-directory' ),
+				'{last_name}'  => (string) $fields['last_name'],
+				'{full_name}'  => trim( (string) $fields['first_name'] . ' ' . (string) $fields['last_name'] ),
+			)
 		);
 	}
 

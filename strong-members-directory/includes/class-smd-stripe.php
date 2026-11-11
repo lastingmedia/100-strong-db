@@ -434,21 +434,39 @@ class SMD_Stripe {
 		$secret     = self::get_webhook_secret();
 		$event_data = json_decode( $payload, true );
 
-		if ( '' !== $secret ) {
-			$verification = self::verify_webhook_signature( $payload, $signature, $secret );
-			if ( is_wp_error( $verification ) ) {
-				return new WP_REST_Response(
-					array( 'error' => $verification->get_error_message() ),
-					400
-				);
-			}
+		// Never process unsigned events: without a secret anyone could forge billing updates.
+		if ( '' === $secret ) {
+			return new WP_REST_Response(
+				array( 'error' => __( 'Stripe webhook secret is not configured.', 'strong-members-directory' ) ),
+				503
+			);
+		}
+
+		$verification = self::verify_webhook_signature( $payload, $signature, $secret );
+		if ( is_wp_error( $verification ) ) {
+			return new WP_REST_Response(
+				array( 'error' => $verification->get_error_message() ),
+				400
+			);
 		}
 
 		if ( ! is_array( $event_data ) || empty( $event_data['type'] ) ) {
 			return new WP_REST_Response( array( 'received' => false ), 400 );
 		}
 
+		// Stripe retries deliveries, so skip events we have already handled.
+		$event_id = ! empty( $event_data['id'] ) ? sanitize_text_field( (string) $event_data['id'] ) : '';
+		$dedupe   = '' !== $event_id ? 'smd_stripe_evt_' . md5( $event_id ) : '';
+
+		if ( '' !== $dedupe && get_transient( $dedupe ) ) {
+			return new WP_REST_Response( array( 'received' => true, 'duplicate' => true ), 200 );
+		}
+
 		self::process_event( $event_data );
+
+		if ( '' !== $dedupe ) {
+			set_transient( $dedupe, 1, 3 * DAY_IN_SECONDS );
+		}
 
 		return new WP_REST_Response( array( 'received' => true ), 200 );
 	}
@@ -461,6 +479,16 @@ class SMD_Stripe {
 	private static function process_event( $event_data ) {
 		$type   = isset( $event_data['type'] ) ? (string) $event_data['type'] : '';
 		$object = isset( $event_data['data']['object'] ) && is_array( $event_data['data']['object'] ) ? $event_data['data']['object'] : array();
+
+		// A sponsored (additional) subscription belongs to a member but must not touch that
+		// member's own billing state, so route it first, by subscription ID, before the
+		// customer-ID lookups below could match the sponsor.
+		$sponsor_id = SMD_Sponsored::find_sponsor_for_event( $type, $object );
+
+		if ( $sponsor_id ) {
+			SMD_Sponsored::handle_event( $sponsor_id, $type, $object );
+			return;
+		}
 
 		if ( 'checkout.session.completed' === $type ) {
 			self::handle_checkout_completed( $object );
@@ -596,8 +624,7 @@ class SMD_Stripe {
 		}
 
 		if ( in_array( $status, array( 'active', 'trialing' ), true ) ) {
-			delete_post_meta( $member_id, '_smd_payment_failed_at' );
-			delete_post_meta( $member_id, '_smd_payment_failed_note' );
+			SMD_Grace::restore( $member_id );
 		}
 	}
 
@@ -725,7 +752,6 @@ class SMD_Stripe {
 		}
 
 		update_post_meta( $member_id, '_smd_billing_status', 'payment_failed' );
-		update_post_meta( $member_id, '_smd_payment_failed_at', current_time( 'mysql' ) );
 		update_post_meta( $member_id, '_smd_payment_failed_note', $note );
 
 		if ( ! empty( $invoice['customer'] ) ) {
@@ -736,7 +762,22 @@ class SMD_Stripe {
 			update_post_meta( $member_id, '_smd_stripe_subscription_id', sanitize_text_field( (string) $invoice['subscription'] ) );
 		}
 
-		self::send_payment_failed_email( $member_id, $fields, $note );
+		// Stripe retries failed charges. Only the first failure starts the grace clock and notifies anyone.
+		if ( SMD_Grace::start_grace( $member_id ) ) {
+			self::send_payment_failed_email( $member_id, $fields, $note );
+
+			$name = trim( (string) $fields['first_name'] . ' ' . (string) $fields['last_name'] );
+			SMD_Grace::notify_team(
+				sprintf( /* translators: %s: member name */ __( 'Payment failed: %s', 'strong-members-directory' ), $name ),
+				sprintf(
+					/* translators: 1: name, 2: end date, 3: follow-up url */
+					__( "%1\$s's membership payment failed. Please follow up with them. Their access will be paused on %2\$s if billing is not updated.\n\nBilling follow-up list: %3\$s", 'strong-members-directory' ),
+					$name,
+					wp_date( get_option( 'date_format' ), SMD_Grace::get_grace_ends_at( $member_id ) ),
+					SMD_Grace::get_follow_up_url()
+				)
+			);
+		}
 	}
 
 	/**
@@ -752,8 +793,7 @@ class SMD_Stripe {
 		}
 
 		update_post_meta( $member_id, '_smd_billing_status', 'active' );
-		delete_post_meta( $member_id, '_smd_payment_failed_at' );
-		delete_post_meta( $member_id, '_smd_payment_failed_note' );
+		SMD_Grace::restore( $member_id );
 	}
 
 	/**
@@ -773,10 +813,11 @@ class SMD_Stripe {
 		$subject = __( 'Membership payment update needed', 'strong-members-directory' );
 		$message = sprintf(
 			/* translators: 1: first name, 2: note, 3: member profile url */
-			__( "Hi %1\$s,\n\nWe attempted to process your membership subscription payment, but it did not go through.\n\nDetails: %2\$s\n\nYour membership has not been automatically removed. Please log in and use the Manage Billing button to update your card details:\n%3\$s\n", 'strong-members-directory' ),
+			__( "Hi %1\$s,\n\nWe attempted to process your membership subscription payment, but it did not go through.\n\nDetails: %2\$s\n\nYour membership has not been removed. Please update your card details by %4\$s to keep your login, directory access and profile active. Use this secure link (it works for 24 hours, no login needed):\n%3\$s\n", 'strong-members-directory' ),
 			(string) $fields['first_name'],
 			$note,
-			get_permalink( $member_id )
+			self::get_billing_hub_url( 'member', $member_id ) ?: get_permalink( $member_id ),
+			wp_date( get_option( 'date_format' ), SMD_Grace::get_grace_ends_at( $member_id ) )
 		);
 
 		wp_mail( $email, $subject, $message );
@@ -1235,13 +1276,33 @@ class SMD_Stripe {
 	 * @param array  $body Request body.
 	 * @return array|WP_Error
 	 */
-	private static function stripe_request( $method, $path, $body = array() ) {
+	/**
+	 * Call the Stripe API from other plugin classes (admin billing panel).
+	 *
+	 * @param string $method  HTTP method.
+	 * @param string $path    API path such as /subscriptions/sub_123.
+	 * @param array  $body    Params (query string for GET, form body otherwise).
+	 * @param array  $headers Extra headers, e.g. an Idempotency-Key.
+	 * @return array|WP_Error
+	 */
+	public static function api( $method, $path, $body = array(), $headers = array() ) {
+		if ( ! self::is_enabled() && '' === self::get_secret_key() ) {
+			return new WP_Error( 'smd_stripe_not_configured', __( 'Stripe is not configured yet.', 'strong-members-directory' ) );
+		}
+
+		return self::stripe_request( $method, $path, $body, $headers );
+	}
+
+	private static function stripe_request( $method, $path, $body = array(), $extra_headers = array() ) {
 		$method = strtoupper( $method );
 		$args = array(
 			'method'  => $method,
 			'timeout' => 30,
-			'headers' => array(
-				'Authorization' => 'Bearer ' . self::get_secret_key(),
+			'headers' => array_merge(
+				array(
+					'Authorization' => 'Bearer ' . self::get_secret_key(),
+				),
+				$extra_headers
 			),
 		);
 
@@ -1379,27 +1440,40 @@ class SMD_Stripe {
 			return new WP_Error( 'smd_missing_signature', __( 'Missing Stripe signature header.', 'strong-members-directory' ) );
 		}
 
-		$parts      = array();
-		$signatures = explode( ',', $signature );
+		$parts          = array();
+		$v1_signatures  = array();
+		$signatures     = explode( ',', $signature );
 
 		foreach ( $signatures as $segment ) {
 			$pair = array_map( 'trim', explode( '=', $segment, 2 ) );
 			if ( 2 === count( $pair ) ) {
-				$parts[ $pair[0] ] = $pair[1];
+				if ( 'v1' === $pair[0] ) {
+					// Stripe may send several v1 values while a secret is being rotated.
+					$v1_signatures[] = $pair[1];
+				} else {
+					$parts[ $pair[0] ] = $pair[1];
+				}
 			}
 		}
 
-		if ( empty( $parts['t'] ) || empty( $parts['v1'] ) ) {
+		if ( empty( $parts['t'] ) || ! ctype_digit( (string) $parts['t'] ) || empty( $v1_signatures ) ) {
 			return new WP_Error( 'smd_invalid_signature', __( 'Invalid Stripe signature header.', 'strong-members-directory' ) );
+		}
+
+		// Reject old (replayed) deliveries. Stripe's own libraries default to 5 minutes.
+		if ( abs( time() - (int) $parts['t'] ) > 300 ) {
+			return new WP_Error( 'smd_signature_expired', __( 'Stripe webhook timestamp is outside the allowed window.', 'strong-members-directory' ) );
 		}
 
 		$expected = hash_hmac( 'sha256', $parts['t'] . '.' . $payload, $secret );
 
-		if ( ! hash_equals( $expected, $parts['v1'] ) ) {
-			return new WP_Error( 'smd_signature_mismatch', __( 'Stripe webhook signature check failed.', 'strong-members-directory' ) );
+		foreach ( $v1_signatures as $candidate ) {
+			if ( hash_equals( $expected, $candidate ) ) {
+				return true;
+			}
 		}
 
-		return true;
+		return new WP_Error( 'smd_signature_mismatch', __( 'Stripe webhook signature check failed.', 'strong-members-directory' ) );
 	}
 
 	/**
@@ -1505,6 +1579,57 @@ class SMD_Stripe {
 			),
 			$base_url
 		);
+	}
+
+	/**
+	 * Build a signed link to the public billing page for a member or applicant.
+	 *
+	 * The link lets someone who is not logged in reach their billing options. It
+	 * only reveals the page; every billing action it offers is signed separately.
+	 *
+	 * @param string $subject_type 'member' or 'applicant'.
+	 * @param int    $subject_id   Post ID.
+	 * @return string Empty string when no billing page exists.
+	 */
+	public static function get_billing_hub_url( $subject_type, $subject_id ) {
+		$base_url = SMD_Settings::get_billing_url();
+		if ( '' === $base_url || ! in_array( $subject_type, array( 'member', 'applicant' ), true ) ) {
+			return '';
+		}
+
+		$expires = time() + DAY_IN_SECONDS;
+
+		return add_query_arg(
+			array(
+				'smd_hub'         => $subject_type,
+				'smd_hub_id'      => (int) $subject_id,
+				'smd_hub_expires' => $expires,
+				'smd_hub_sig'     => self::generate_billing_action_signature( 'billing_hub', $subject_type, $subject_id, $expires ),
+			),
+			$base_url
+		);
+	}
+
+	/**
+	 * Validate the signed billing-page link in the current request.
+	 *
+	 * @return array{type:string,id:int}|null
+	 */
+	public static function get_verified_billing_hub_subject() {
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended
+		$type      = isset( $_GET['smd_hub'] ) ? sanitize_key( wp_unslash( $_GET['smd_hub'] ) ) : '';
+		$id        = isset( $_GET['smd_hub_id'] ) ? (int) $_GET['smd_hub_id'] : 0;
+		$expires   = isset( $_GET['smd_hub_expires'] ) ? (int) $_GET['smd_hub_expires'] : 0;
+		$signature = isset( $_GET['smd_hub_sig'] ) ? (string) wp_unslash( $_GET['smd_hub_sig'] ) : '';
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+		if ( ! in_array( $type, array( 'member', 'applicant' ), true ) || ! $id || ! $expires || '' === $signature || time() > $expires ) {
+			return null;
+		}
+
+		$expected = self::generate_billing_action_signature( 'billing_hub', $type, $id, $expires );
+
+		return hash_equals( $expected, $signature ) ? array( 'type' => $type, 'id' => $id ) : null;
 	}
 
 	/**

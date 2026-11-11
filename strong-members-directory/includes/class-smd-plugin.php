@@ -13,6 +13,9 @@ require_once SMD_PLUGIN_DIR . 'includes/class-smd-elementor.php';
 require_once SMD_PLUGIN_DIR . 'includes/class-smd-settings.php';
 require_once SMD_PLUGIN_DIR . 'includes/class-smd-auth.php';
 require_once SMD_PLUGIN_DIR . 'includes/class-smd-stripe.php';
+require_once SMD_PLUGIN_DIR . 'includes/class-smd-grace.php';
+require_once SMD_PLUGIN_DIR . 'includes/class-smd-sponsored.php';
+require_once SMD_PLUGIN_DIR . 'includes/class-smd-billing-admin.php';
 
 class SMD_Plugin {
 	/**
@@ -64,6 +67,7 @@ class SMD_Plugin {
 		SMD_Settings::ensure_dashboard_page();
 		SMD_Settings::ensure_nomination_page();
 		SMD_Settings::ensure_applicant_onboarding_page();
+		SMD_Settings::ensure_billing_page();
 		update_option( self::VERSION_OPTION, SMD_VERSION );
 		flush_rewrite_rules();
 	}
@@ -72,6 +76,7 @@ class SMD_Plugin {
 	 * Deactivation hook.
 	 */
 	public static function deactivate() {
+		wp_clear_scheduled_hook( SMD_Grace::CRON_HOOK );
 		SMD_Auth::remove_role();
 		flush_rewrite_rules();
 	}
@@ -93,6 +98,7 @@ class SMD_Plugin {
 		SMD_Settings::ensure_dashboard_page();
 		SMD_Settings::ensure_nomination_page();
 		SMD_Settings::ensure_applicant_onboarding_page();
+		SMD_Settings::ensure_billing_page();
 		flush_rewrite_rules( false );
 		update_option( self::VERSION_OPTION, SMD_VERSION );
 	}
@@ -110,6 +116,8 @@ class SMD_Plugin {
 		SMD_Settings::hooks();
 		SMD_Auth::hooks();
 		SMD_Stripe::hooks();
+		SMD_Grace::hooks();
+		SMD_Billing_Admin::hooks();
 	}
 
 	/**
