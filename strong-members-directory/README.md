@@ -48,6 +48,20 @@ Behavior:
 - `first_name` and `last_name` are required
 - Existing members are updated by matching email first, then full name
 - `profile_image_url` is optional and will be sideloaded as the featured image when possible
+- Header names are not case-sensitive, so `First Name` and `first_name` both work
+- New members get a WordPress login. The **Email new members a link to set their password** box is off by default, so an import is quiet unless you tick it
+
+### Importing a Stripe export
+
+Upload the Stripe **Subscriptions** CSV (Stripe Dashboard > Billing > Subscriptions > Export) on the same screen. It is recognized automatically by its columns, so no mapping is needed:
+
+- **Customer Name** is split into first and last name. ALL CAPS and all-lowercase names are fixed, and middle initials are dropped. A one-word name is imported with no last name and flagged in the preview.
+- **Customer Email** becomes the member email and login.
+- The Stripe customer ID, subscription ID and status are saved on the member, so the billing panel and the billing page work straight away.
+- Re-importing a later export is safe. Members are matched by Stripe customer ID first, then email, then name. Existing members only get their billing details refreshed. Their name, occupation, bio and contact details are never overwritten.
+- Canceled and incomplete subscriptions are skipped.
+- If the same person has more than one subscription, only the first row is imported and the others are flagged in the preview, since that can mean a double charge.
+- Review the dry-run preview before choosing **Apply Import**.
 
 ## Stripe Integration
 

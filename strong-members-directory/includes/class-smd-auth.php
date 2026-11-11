@@ -97,7 +97,9 @@ class SMD_Auth {
 
 		update_post_meta( $member_id, '_smd_user_id', (int) $user_id );
 		update_user_meta( $user_id, '_smd_member_id', $member_id );
-		retrieve_password( get_user_by( 'id', $user_id )->user_login );
+		if ( apply_filters( 'smd_send_new_member_password_email', true, $user_id, $member_id ) ) {
+			retrieve_password( get_user_by( 'id', $user_id )->user_login );
+		}
 
 		return (int) $user_id;
 	}

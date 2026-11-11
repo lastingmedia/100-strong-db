@@ -52,7 +52,14 @@ class SMD_Importer {
 						<th scope="row"><label for="smd_import_file"><?php esc_html_e( 'Spreadsheet File', 'strong-members-directory' ); ?></label></th>
 						<td>
 							<input type="file" id="smd_import_file" name="smd_import_file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
-							<p class="description"><?php esc_html_e( 'Supported formats: .csv and .xlsx', 'strong-members-directory' ); ?></p>
+							<p class="description"><?php esc_html_e( 'Supported formats: .csv and .xlsx. A Stripe subscriptions export is recognized automatically.', 'strong-members-directory' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'New Member Emails', 'strong-members-directory' ); ?></th>
+						<td>
+							<label><input type="checkbox" name="smd_send_welcome_emails" value="1"> <?php esc_html_e( 'Email new members a link to set their password', 'strong-members-directory' ); ?></label>
+							<p class="description"><?php esc_html_e( 'Leave this off to import quietly. Logins are still created, and members can use "Lost your password?" later.', 'strong-members-directory' ); ?></p>
 						</td>
 					</tr>
 				</table>
@@ -149,6 +156,10 @@ class SMD_Importer {
 			'total_rows'   => $preview['summary']['total_rows'],
 			'preview_only' => false,
 		);
+
+		if ( empty( $preview['send_welcome'] ) ) {
+			add_filter( 'smd_send_new_member_password_email', '__return_false' );
+		}
 
 		foreach ( $preview['rows'] as $row ) {
 			$report['rows'][] = array(
@@ -254,7 +265,8 @@ class SMD_Importer {
 		$summary = $preview['summary'];
 		?>
 		<h2><?php esc_html_e( 'Dry-Run Import Preview', 'strong-members-directory' ); ?></h2>
-		<p><?php echo esc_html( sprintf( __( 'Source file: %s', 'strong-members-directory' ), (string) $preview['file_name'] ) ); ?></p>
+		<p><?php echo esc_html( sprintf( __( 'Source file: %s', 'strong-members-directory' ), (string) $preview['file_name'] ) ); ?><?php echo ! empty( $preview['is_stripe'] ) ? ' ' . esc_html__( '(Stripe subscriptions export detected)', 'strong-members-directory' ) : ''; ?></p>
+		<p><?php echo ! empty( $preview['send_welcome'] ) ? esc_html__( 'New members will be emailed a password-setup link.', 'strong-members-directory' ) : esc_html__( 'No emails will be sent to members.', 'strong-members-directory' ); ?></p>
 		<ul>
 			<li><?php echo esc_html( sprintf( __( 'Rows analyzed: %d', 'strong-members-directory' ), (int) $summary['total_rows'] ) ); ?></li>
 			<li><?php echo esc_html( sprintf( __( 'Would create: %d', 'strong-members-directory' ), (int) $summary['created'] ) ); ?></li>
@@ -598,6 +610,8 @@ class SMD_Importer {
 	private static function build_preview( $rows ) {
 		$preview = array(
 			'file_name' => isset( $_FILES['smd_import_file']['name'] ) ? sanitize_file_name( wp_unslash( $_FILES['smd_import_file']['name'] ) ) : '',
+			'is_stripe' => ! empty( $rows ) && 'stripe' === $rows[0]['source'],
+			'send_welcome' => ! empty( $_POST['smd_send_welcome_emails'] ), // phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce checked in handle_import().
 			'summary'   => array(
 				'total_rows'     => count( $rows ),
 				'created'        => 0,
@@ -618,19 +632,53 @@ class SMD_Importer {
 			$action = 'create';
 			$match_label = __( 'New member', 'strong-members-directory' );
 
-			if ( '' === $row['first_name'] || '' === $row['last_name'] ) {
+			$is_stripe = 'stripe' === $row['source'];
+
+			if ( $is_stripe ) {
+				if ( '' === $row['first_name'] ) {
+					$action  = 'skip';
+					$notes[] = __( 'No customer name in Stripe.', 'strong-members-directory' );
+				} elseif ( '' === $row['last_name'] ) {
+					$notes[] = __( 'Stripe only has one name, so there is no last name yet. Add it on the member record.', 'strong-members-directory' );
+				}
+
+				if ( '' === $row['email'] ) {
+					$notes[] = __( 'No email in Stripe, so no login will be created.', 'strong-members-directory' );
+				}
+
+				if ( in_array( $row['stripe_status'], array( 'canceled', 'incomplete', 'incomplete_expired' ), true ) ) {
+					$action  = 'skip';
+					$notes[] = sprintf(
+						/* translators: %s: Stripe subscription status */
+						__( 'Subscription is %s in Stripe.', 'strong-members-directory' ),
+						$row['stripe_status']
+					);
+				}
+			} elseif ( '' === $row['first_name'] || '' === $row['last_name'] ) {
 				$action = 'skip';
 				$notes[] = __( 'Missing first or last name.', 'strong-members-directory' );
 			}
 
+			$duplicate_of = 0;
+
 			foreach ( $keys as $key ) {
 				if ( isset( $seen_keys[ $key ] ) ) {
-					$action = 'skip';
-					$notes[] = sprintf(
-						/* translators: %d: row number */
-						__( 'Duplicate of row %d in this file.', 'strong-members-directory' ),
-						(int) $seen_keys[ $key ]
-					);
+					$action       = 'skip';
+					$duplicate_of = (int) $seen_keys[ $key ];
+					if ( $is_stripe ) {
+						$notes[] = sprintf(
+							/* translators: 1: row number, 2: subscription id */
+							__( 'Same person as row %1$d, which is kept. This is a second subscription (%2$s). Check Stripe in case they are being billed twice.', 'strong-members-directory' ),
+							(int) $seen_keys[ $key ],
+							$row['stripe_subscription_id']
+						);
+					} else {
+						$notes[] = sprintf(
+							/* translators: %d: row number */
+							__( 'Duplicate of row %d in this file.', 'strong-members-directory' ),
+							(int) $seen_keys[ $key ]
+						);
+					}
 					++$preview['summary']['duplicate_rows'];
 					break;
 				}
@@ -645,7 +693,7 @@ class SMD_Importer {
 
 			foreach ( $keys as $key ) {
 				if ( ! isset( $seen_keys[ $key ] ) ) {
-					$seen_keys[ $key ] = (int) $row['row_number'];
+					$seen_keys[ $key ] = $duplicate_of ? $duplicate_of : (int) $row['row_number'];
 				}
 			}
 
@@ -690,6 +738,17 @@ class SMD_Importer {
 	 * @return array{id:int,label:string}
 	 */
 	private static function detect_existing_member( $row ) {
+		if ( ! empty( $row['stripe_customer_id'] ) ) {
+			$existing_id = self::find_member_by_meta( '_smd_stripe_customer_id', $row['stripe_customer_id'] );
+
+			if ( $existing_id ) {
+				return array(
+					'id'    => $existing_id,
+					'label' => __( 'Matched by Stripe customer', 'strong-members-directory' ),
+				);
+			}
+		}
+
 		if ( '' !== $row['email'] ) {
 			$existing_id = SMD_Member_Post_Type::find_existing_member( $row['email'], '', '' );
 			if ( $existing_id ) {
@@ -713,6 +772,32 @@ class SMD_Importer {
 			'id'    => 0,
 			'label' => '',
 		);
+	}
+
+	/**
+	 * Find a member post by an exact meta value.
+	 *
+	 * @param string $meta_key Meta key.
+	 * @param string $value Meta value.
+	 * @return int
+	 */
+	private static function find_member_by_meta( $meta_key, $value ) {
+		if ( '' === $value ) {
+			return 0;
+		}
+
+		$query = new WP_Query(
+			array(
+				'post_type'      => SMD_Member_Post_Type::POST_TYPE,
+				'post_status'    => 'any',
+				'fields'         => 'ids',
+				'posts_per_page' => 1,
+				'meta_key'       => $meta_key, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key
+				'meta_value'     => $value, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
+			)
+		);
+
+		return ! empty( $query->posts[0] ) ? (int) $query->posts[0] : 0;
 	}
 
 	/**
@@ -751,7 +836,30 @@ class SMD_Importer {
 			$mapped[ $header ] = isset( $row[ $index ] ) ? trim( (string) $row[ $index ] ) : '';
 		}
 
-		return array(
+		$is_stripe = isset( $mapped['customer_email'], $mapped['customer_id'], $mapped['customer_name'], $mapped['status'] );
+		$stripe    = array(
+			'source'                 => 'csv',
+			'stripe_customer_id'     => '',
+			'stripe_subscription_id' => '',
+			'stripe_status'          => '',
+		);
+
+		if ( $is_stripe ) {
+			$name = self::split_full_name( $mapped['customer_name'] );
+
+			$mapped['first_name'] = $name['first_name'];
+			$mapped['last_name']  = $name['last_name'];
+			$mapped['email']      = strtolower( $mapped['customer_email'] );
+
+			$stripe = array(
+				'source'                 => 'stripe',
+				'stripe_customer_id'     => sanitize_text_field( $mapped['customer_id'] ),
+				'stripe_subscription_id' => sanitize_text_field( $mapped['id'] ?? '' ),
+				'stripe_status'          => sanitize_key( $mapped['status'] ),
+			);
+		}
+
+		return $stripe + array(
 			'row_number'        => (string) $row_number,
 			'first_name'        => sanitize_text_field( $mapped['first_name'] ?? '' ),
 			'last_name'         => sanitize_text_field( $mapped['last_name'] ?? '' ),
@@ -767,6 +875,59 @@ class SMD_Importer {
 	}
 
 	/**
+	 * Split a single "Customer Name" value into first and last name.
+	 *
+	 * Handles ALL CAPS and all lowercase names, middle initials, name suffixes,
+	 * surname particles ("von", "de"), and couples ("Kay & Julie Hiramine").
+	 * A single word becomes a first name with no last name.
+	 *
+	 * @param string $full_name Raw Stripe customer name.
+	 * @return array{first_name:string,last_name:string}
+	 */
+	public static function split_full_name( $full_name ) {
+		$full_name = trim( preg_replace( '/\s+/', ' ', (string) $full_name ) );
+
+		if ( '' === $full_name ) {
+			return array( 'first_name' => '', 'last_name' => '' );
+		}
+
+		if ( $full_name === strtoupper( $full_name ) || $full_name === strtolower( $full_name ) ) {
+			$full_name = ucwords( strtolower( $full_name ), " -'" );
+		}
+
+		$tokens = explode( ' ', $full_name );
+
+		if ( 1 === count( $tokens ) ) {
+			return array( 'first_name' => $tokens[0], 'last_name' => '' );
+		}
+
+		$suffixes  = array( 'jr', 'sr', 'ii', 'iii', 'iv' );
+		$particles = array( 'von', 'van', 'de', 'del', 'della', 'der', 'den', 'dem', 'di', 'da', 'du', 'la', 'le', 'ter' );
+		$last      = array( array_pop( $tokens ) );
+
+		if ( $tokens && in_array( strtolower( rtrim( $last[0], '.' ) ), $suffixes, true ) ) {
+			array_unshift( $last, array_pop( $tokens ) );
+		}
+
+		while ( count( $tokens ) > 1 && in_array( strtolower( end( $tokens ) ), $particles, true ) ) {
+			array_unshift( $last, array_pop( $tokens ) );
+		}
+
+		$given = array_values( array_filter( $tokens, static function ( $token ) {
+			return '&' === $token || 'and' === strtolower( $token ) || strlen( rtrim( $token, '.' ) ) > 1;
+		} ) );
+
+		if ( ! $given ) {
+			$given = $tokens;
+		}
+
+		return array(
+			'first_name' => implode( ' ', $given ),
+			'last_name'  => implode( ' ', $last ),
+		);
+	}
+
+	/**
 	 * Normalize header names.
 	 *
 	 * @param string $header Raw header.
@@ -774,7 +935,7 @@ class SMD_Importer {
 	 */
 	private static function normalize_header( $header ) {
 		$header = str_replace( "\xEF\xBB\xBF", '', (string) $header );
-		return strtolower( trim( preg_replace( '/[^a-z0-9]+/', '_', trim( $header ) ), '_' ) );
+		return trim( preg_replace( '/[^a-z0-9]+/', '_', strtolower( trim( $header ) ) ), '_' );
 	}
 
 	/**
@@ -784,8 +945,26 @@ class SMD_Importer {
 	 * @return string|WP_Error
 	 */
 	private static function upsert_member( $data ) {
-		$existing_id = SMD_Member_Post_Type::find_existing_member( $data['email'], $data['first_name'], $data['last_name'] );
-		$postarr     = array(
+		$is_stripe   = 'stripe' === $data['source'];
+		$existing_id = $is_stripe ? self::find_member_by_meta( '_smd_stripe_customer_id', $data['stripe_customer_id'] ) : 0;
+
+		if ( ! $existing_id ) {
+			$existing_id = SMD_Member_Post_Type::find_existing_member( $data['email'], $data['first_name'], $data['last_name'] );
+		}
+
+		// A Stripe export only knows billing details, so for an existing member it must
+		// never overwrite the name, occupation, bio or contact details they already have.
+		if ( $is_stripe && $existing_id ) {
+			if ( '' !== $data['email'] && '' === (string) get_post_meta( $existing_id, '_smd_email', true ) ) {
+				update_post_meta( $existing_id, '_smd_email', $data['email'] );
+				SMD_Auth::ensure_member_user( $existing_id, $data['email'], $data['first_name'], $data['last_name'] );
+			}
+
+			self::save_stripe_billing_meta( $existing_id, $data );
+			return 'updated';
+		}
+
+		$postarr = array(
 			'post_type'    => SMD_Member_Post_Type::POST_TYPE,
 			'post_status'  => 'publish',
 			'post_title'   => trim( $data['first_name'] . ' ' . $data['last_name'] ),
@@ -823,7 +1002,29 @@ class SMD_Importer {
 			self::maybe_attach_remote_image( $post_id, $data['profile_image_url'] );
 		}
 
+		if ( $is_stripe ) {
+			self::save_stripe_billing_meta( $post_id, $data );
+		}
+
 		return $action;
+	}
+
+	/**
+	 * Store the Stripe links for a member so billing tools work immediately.
+	 *
+	 * @param int                   $post_id Member post ID.
+	 * @param array<string, string> $data Row data.
+	 */
+	private static function save_stripe_billing_meta( $post_id, $data ) {
+		update_post_meta( $post_id, '_smd_stripe_customer_id', $data['stripe_customer_id'] );
+
+		if ( '' !== $data['stripe_subscription_id'] ) {
+			update_post_meta( $post_id, '_smd_stripe_subscription_id', $data['stripe_subscription_id'] );
+		}
+
+		if ( '' !== $data['stripe_status'] ) {
+			update_post_meta( $post_id, '_smd_billing_status', $data['stripe_status'] );
+		}
 	}
 
 	/**
