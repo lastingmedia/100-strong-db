@@ -61,6 +61,16 @@ Upload the Stripe **Subscriptions** CSV (Stripe Dashboard > Billing > Subscripti
 - Re-importing a later export is safe. Members are matched by Stripe customer ID first, then email, then name. Existing members only get their billing details refreshed. Their name, occupation, bio and contact details are never overwritten.
 - Canceled and incomplete subscriptions are skipped.
 - If one person pays for several subscriptions (for example a member sponsoring others), they stay one member. The first row is their main subscription, and the others are saved on the same member as additional subscriptions. The preview shows them as "Attach to member".
+
+### Sponsored subscriptions
+
+When a member pays for other people's dues, the extra subscriptions stay on the sponsor and are tracked on their own:
+
+- A Stripe event for a sponsored subscription only changes that subscription's status. It never changes the sponsor's own billing state, starts their grace period, or affects their login and access.
+- The first failed payment on a sponsored subscription emails the team (the same address as other billing alerts). Stripe's retries do not repeat the email. A later failure, after it has recovered, alerts again.
+- On **Members**, the Billing column shows "Sponsored payment failed" under the member until it is paid.
+- In the **Stripe Billing** box on the sponsor's record, a **Subscription** picker appears when they have sponsored subscriptions. Choose one to see its card and payment history, and to pause, resume, cancel, refund or send a receipt for it. Staff actions are logged with the subscription ID.
+- **Email update-card link** is only for the main subscription, because sponsored subscriptions are billed to a different Stripe customer.
 - Review the dry-run preview before choosing **Apply Import**.
 
 ## Stripe Integration

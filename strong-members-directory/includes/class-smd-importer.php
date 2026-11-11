@@ -1065,14 +1065,10 @@ class SMD_Importer {
 			update_post_meta( $post_id, '_smd_billing_status', $data['stripe_status'] );
 		}
 
-		// Extra subscriptions (a member sponsoring others) are kept as separate rows under
-		// their own key so they never replace the main customer and subscription IDs.
+		// Extra subscriptions (a member sponsoring others) are kept separately so they never
+		// replace the main customer and subscription IDs. See SMD_Sponsored.
 		if ( ! empty( $data['extra_subscriptions'] ) ) {
-			delete_post_meta( $post_id, '_smd_stripe_additional_subscription' );
-
-			foreach ( $data['extra_subscriptions'] as $extra ) {
-				add_post_meta( $post_id, '_smd_stripe_additional_subscription', $extra );
-			}
+			SMD_Sponsored::set_for_member( $post_id, $data['extra_subscriptions'] );
 		}
 	}
 

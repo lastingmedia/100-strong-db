@@ -5,6 +5,7 @@
 
 	var memberId = panel.getAttribute('data-member');
 	var busy = false;
+	var currentSub = ''; // '' = the member's main subscription, otherwise a sponsored subscription ID.
 
 	function el(tag, attrs, text) {
 		var node = document.createElement(tag);
@@ -24,6 +25,7 @@
 		var body = new URLSearchParams(data);
 		body.set('nonce', SMDBilling.nonce);
 		body.set('member_id', memberId);
+		if (currentSub) { body.set('sub', currentSub); }
 		return fetch(SMDBilling.ajaxUrl, { method: 'POST', credentials: 'same-origin', body: body }).then(function (r) { return r.json(); });
 	}
 
@@ -55,6 +57,21 @@
 		if (msg) { notice(msg, false); }
 		var sub = d.subscription;
 
+		if (d.subscriptions && d.subscriptions.length) {
+			var picker = el('p', { style: 'margin-bottom:12px' });
+			picker.appendChild(el('label', { 'for': 'smd-billing-sub', style: 'font-weight:600;margin-right:8px' }, 'Subscription'));
+			var select = el('select', { id: 'smd-billing-sub' });
+			select.appendChild(el('option', { value: '' }, 'Main subscription'));
+			d.subscriptions.forEach(function (s) {
+				var o = el('option', { value: s.id }, 'Sponsored: ' + s.label);
+				if (s.id === currentSub) { o.selected = true; }
+				select.appendChild(o);
+			});
+			select.addEventListener('change', function () { currentSub = select.value; panel.textContent = ''; panel.appendChild(el('p', { 'class': 'smd-billing-loading' }, 'Loading billing details from Stripe…')); load(); });
+			picker.appendChild(select);
+			panel.appendChild(picker);
+		}
+
 		var summary = el('table', { 'class': 'widefat striped', style: 'max-width:640px;margin-bottom:12px' });
 		function row(k, v) { var tr = el('tr'); tr.appendChild(el('th', { style: 'width:190px' }, k)); tr.appendChild(el('td', {}, v)); summary.appendChild(tr); }
 		row('Billing state', d.state_label);
@@ -68,7 +85,9 @@
 		panel.appendChild(summary);
 
 		var actions = el('p', { style: 'display:flex;gap:8px;flex-wrap:wrap' });
-		actions.appendChild(button('Email update-card link', function () { run({ action: 'smd_billing_action', 'do': 'send_card_link' }, 'Email the member a link to update their card?'); }));
+		if (!d.sponsored) {
+			actions.appendChild(button('Email update-card link', function () { run({ action: 'smd_billing_action', 'do': 'send_card_link' }, 'Email the member a link to update their card?'); }));
+		}
 		if (sub && sub.status !== 'canceled') {
 			actions.appendChild(sub.paused
 				? button('Resume billing', function () { run({ action: 'smd_billing_action', 'do': 'resume' }); })

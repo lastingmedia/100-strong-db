@@ -480,6 +480,16 @@ class SMD_Stripe {
 		$type   = isset( $event_data['type'] ) ? (string) $event_data['type'] : '';
 		$object = isset( $event_data['data']['object'] ) && is_array( $event_data['data']['object'] ) ? $event_data['data']['object'] : array();
 
+		// A sponsored (additional) subscription belongs to a member but must not touch that
+		// member's own billing state, so route it first, by subscription ID, before the
+		// customer-ID lookups below could match the sponsor.
+		$sponsor_id = SMD_Sponsored::find_sponsor_for_event( $type, $object );
+
+		if ( $sponsor_id ) {
+			SMD_Sponsored::handle_event( $sponsor_id, $type, $object );
+			return;
+		}
+
 		if ( 'checkout.session.completed' === $type ) {
 			self::handle_checkout_completed( $object );
 			return;

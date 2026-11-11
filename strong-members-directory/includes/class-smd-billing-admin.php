@@ -112,6 +112,10 @@ class SMD_Billing_Admin {
 		);
 
 		printf( '<span style="font-weight:600;color:%s">%s</span>', esc_attr( $colors[ $state ] ), esc_html( $labels[ $state ] ) );
+
+		if ( SMD_Sponsored::has_failed( (int) $post_id ) ) {
+			printf( '<br><span style="color:#cf222e;font-size:12px">%s</span>', esc_html__( 'Sponsored payment failed', 'strong-members-directory' ) );
+		}
 	}
 
 	/**
@@ -256,6 +260,23 @@ class SMD_Billing_Admin {
 
 		$fields              = SMD_Member_Post_Type::get_member_data( $member_id );
 		$fields['member_id'] = $member_id;
+		$fields['sponsored'] = false;
+
+		// A sponsored (additional) subscription can be managed instead of the main one. It
+		// must be one of this member's own, so a posted ID can never reach someone else's.
+		$sponsored_sub = isset( $_POST['sub'] ) ? sanitize_text_field( wp_unslash( $_POST['sub'] ) ) : '';
+		if ( '' !== $sponsored_sub ) {
+			$row = SMD_Sponsored::find_row( $member_id, $sponsored_sub );
+
+			if ( ! $row ) {
+				wp_send_json_error( array( 'message' => __( 'That subscription does not belong to this member.', 'strong-members-directory' ) ), 403 );
+			}
+
+			$fields['stripe_customer_id']     = (string) $row['customer'];
+			$fields['stripe_subscription_id'] = (string) $row['subscription'];
+			$fields['sponsored']              = true;
+			$fields['sponsored_row']          = $row;
+		}
 
 		if ( empty( $fields['stripe_customer_id'] ) ) {
 			wp_send_json_error( array( 'message' => __( 'This member has no Stripe customer yet.', 'strong-members-directory' ) ), 400 );
@@ -345,10 +366,23 @@ class SMD_Billing_Admin {
 
 		$log = get_post_meta( $fields['member_id'], self::LOG_META, true );
 
+		$state       = $fields['sponsored'] ? SMD_Sponsored::state_for_row( $fields['sponsored_row'] ) : self::get_billing_state( $fields['member_id'] );
+		$sponsored   = array();
+		$state_names = self::state_labels();
+
+		foreach ( SMD_Sponsored::get_for_member( $fields['member_id'] ) as $extra ) {
+			$sponsored[] = array(
+				'id'    => (string) $extra['subscription'],
+				'label' => trim( ( '' !== (string) $extra['email'] ? $extra['email'] : $extra['subscription'] ) . ' · ' . $state_names[ SMD_Sponsored::state_for_row( $extra ) ] ),
+			);
+		}
+
 		wp_send_json_success(
 			array(
-				'state'        => self::get_billing_state( $fields['member_id'] ),
-				'state_label'  => self::state_labels()[ self::get_billing_state( $fields['member_id'] ) ],
+				'state'         => $state,
+				'state_label'   => $state_names[ $state ],
+				'sponsored'     => (bool) $fields['sponsored'],
+				'subscriptions' => $sponsored,
 				'subscription' => $subscription ? array(
 					'id'                   => (string) $subscription['id'],
 					'status'               => (string) $subscription['status'],
@@ -379,6 +413,10 @@ class SMD_Billing_Admin {
 		$target      = isset( $_POST['target'] ) ? sanitize_text_field( wp_unslash( $_POST['target'] ) ) : '';
 		$amount      = isset( $_POST['amount'] ) ? (int) $_POST['amount'] : 0;
 		$message     = '';
+
+		if ( $fields['sponsored'] && 'send_card_link' === $do ) {
+			wp_send_json_error( array( 'message' => __( 'Update-card links are only available for the main subscription. Sponsored subscriptions are billed to a different Stripe customer.', 'strong-members-directory' ) ), 400 );
+		}
 
 		if ( in_array( $do, array( 'pause', 'resume', 'cancel_at_period_end', 'keep', 'cancel_now' ), true ) && '' === $sub_id ) {
 			wp_send_json_error( array( 'message' => __( 'This member has no subscription to change.', 'strong-members-directory' ) ), 400 );
@@ -428,7 +466,11 @@ class SMD_Billing_Admin {
 
 			case 'cancel_now':
 				self::unwrap( SMD_Stripe::api( 'DELETE', '/subscriptions/' . rawurlencode( $sub_id ) ) );
-				update_post_meta( $member_id, '_smd_billing_status', 'canceled' );
+				if ( $fields['sponsored'] ) {
+					SMD_Sponsored::update_row( $member_id, $sub_id, array( 'status' => 'canceled' ) );
+				} else {
+					update_post_meta( $member_id, '_smd_billing_status', 'canceled' );
+				}
 				$message = __( 'Subscription canceled immediately.', 'strong-members-directory' );
 				break;
 
@@ -472,6 +514,10 @@ class SMD_Billing_Admin {
 
 			default:
 				wp_send_json_error( array( 'message' => __( 'Unknown action.', 'strong-members-directory' ) ), 400 );
+		}
+
+		if ( $fields['sponsored'] ) {
+			$message .= ' ' . sprintf( /* translators: %s: subscription id */ __( '(Sponsored subscription %s.)', 'strong-members-directory' ), $sub_id );
 		}
 
 		self::log( $member_id, $do, $message );

@@ -14,6 +14,7 @@ require_once SMD_PLUGIN_DIR . 'includes/class-smd-settings.php';
 require_once SMD_PLUGIN_DIR . 'includes/class-smd-auth.php';
 require_once SMD_PLUGIN_DIR . 'includes/class-smd-stripe.php';
 require_once SMD_PLUGIN_DIR . 'includes/class-smd-grace.php';
+require_once SMD_PLUGIN_DIR . 'includes/class-smd-sponsored.php';
 require_once SMD_PLUGIN_DIR . 'includes/class-smd-billing-admin.php';
 
 class SMD_Plugin {
