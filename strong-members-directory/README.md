@@ -60,7 +60,7 @@ Upload the Stripe **Subscriptions** CSV (Stripe Dashboard > Billing > Subscripti
 - The Stripe customer ID, subscription ID and status are saved on the member, so the billing panel and the billing page work straight away.
 - Re-importing a later export is safe. Members are matched by Stripe customer ID first, then email, then name. Existing members only get their billing details refreshed. Their name, occupation, bio and contact details are never overwritten.
 - Canceled and incomplete subscriptions are skipped.
-- If the same person has more than one subscription, only the first row is imported and the others are flagged in the preview, since that can mean a double charge.
+- If one person pays for several subscriptions (for example a member sponsoring others), they stay one member. The first row is their main subscription, and the others are saved on the same member as additional subscriptions. The preview shows them as "Attach to member".
 - Review the dry-run preview before choosing **Apply Import**.
 
 ## Stripe Integration

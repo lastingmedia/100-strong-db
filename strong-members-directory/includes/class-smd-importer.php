@@ -171,6 +171,10 @@ class SMD_Importer {
 				'notes'      => $row['notes'],
 			);
 
+			if ( 'attach' === $row['action'] ) {
+				continue; // Saved with the member's main row.
+			}
+
 			if ( 'skip' === $row['action'] ) {
 				++$report['skipped'];
 				if ( $row['notes'] ) {
@@ -272,6 +276,7 @@ class SMD_Importer {
 			<li><?php echo esc_html( sprintf( __( 'Would create: %d', 'strong-members-directory' ), (int) $summary['created'] ) ); ?></li>
 			<li><?php echo esc_html( sprintf( __( 'Would update: %d', 'strong-members-directory' ), (int) $summary['updated'] ) ); ?></li>
 			<li><?php echo esc_html( sprintf( __( 'Would skip: %d', 'strong-members-directory' ), (int) $summary['skipped'] ) ); ?></li>
+			<li><?php echo esc_html( sprintf( __( 'Additional subscriptions attached to a member: %d', 'strong-members-directory' ), (int) ( $summary['attached'] ?? 0 ) ) ); ?></li>
 			<li><?php echo esc_html( sprintf( __( 'Duplicate rows detected in file: %d', 'strong-members-directory' ), (int) $summary['duplicate_rows'] ) ); ?></li>
 		</ul>
 
@@ -617,6 +622,7 @@ class SMD_Importer {
 				'created'        => 0,
 				'updated'        => 0,
 				'skipped'        => 0,
+				'attached'       => 0,
 				'duplicate_rows' => 0,
 			),
 			'rows'      => array(),
@@ -624,6 +630,8 @@ class SMD_Importer {
 		);
 
 		$seen_keys = array();
+		$extras    = array();
+		$row_index = array();
 
 		foreach ( $rows as $row ) {
 			$match = self::detect_existing_member( $row );
@@ -659,18 +667,26 @@ class SMD_Importer {
 				$notes[] = __( 'Missing first or last name.', 'strong-members-directory' );
 			}
 
-			$duplicate_of = 0;
+			$duplicate_of  = 0;
+			$action_before = $action;
 
 			foreach ( $keys as $key ) {
 				if ( isset( $seen_keys[ $key ] ) ) {
 					$action       = 'skip';
 					$duplicate_of = (int) $seen_keys[ $key ];
-					if ( $is_stripe ) {
+					if ( $is_stripe && 'skip' !== $action_before ) {
+						$action  = 'attach';
 						$notes[] = sprintf(
 							/* translators: 1: row number, 2: subscription id */
-							__( 'Same person as row %1$d, which is kept. This is a second subscription (%2$s). Check Stripe in case they are being billed twice.', 'strong-members-directory' ),
+							__( 'Additional subscription (%2$s) attached to the same member as row %1$d.', 'strong-members-directory' ),
 							(int) $seen_keys[ $key ],
 							$row['stripe_subscription_id']
+						);
+						$extras[ (int) $seen_keys[ $key ] ][] = array(
+							'customer'     => $row['stripe_customer_id'],
+							'subscription' => $row['stripe_subscription_id'],
+							'status'       => $row['stripe_status'],
+							'email'        => $row['email'],
 						);
 					} else {
 						$notes[] = sprintf(
@@ -684,15 +700,21 @@ class SMD_Importer {
 				}
 			}
 
-			if ( 'skip' !== $action && $match['id'] ) {
+			if ( 'attach' === $action ) {
+				$match_label = __( 'Same member as an earlier row', 'strong-members-directory' );
+			} elseif ( 'skip' !== $action && $match['id'] ) {
 				$action      = 'update';
 				$match_label = $match['label'];
 			} elseif ( 'skip' !== $action ) {
 				$match_label = __( 'No existing match', 'strong-members-directory' );
 			}
 
+			// A Stripe row skipped for its own reasons (for example a canceled subscription)
+			// must not become the "owner" that later rows attach to.
+			$can_own_keys = ! ( $is_stripe && 'skip' === $action && ! $duplicate_of );
+
 			foreach ( $keys as $key ) {
-				if ( ! isset( $seen_keys[ $key ] ) ) {
+				if ( $can_own_keys && ! isset( $seen_keys[ $key ] ) ) {
 					$seen_keys[ $key ] = $duplicate_of ? $duplicate_of : (int) $row['row_number'];
 				}
 			}
@@ -701,9 +723,13 @@ class SMD_Importer {
 				++$preview['summary']['created'];
 			} elseif ( 'update' === $action ) {
 				++$preview['summary']['updated'];
+			} elseif ( 'attach' === $action ) {
+				++$preview['summary']['attached'];
 			} else {
 				++$preview['summary']['skipped'];
 			}
+
+			$row_index[ (int) $row['row_number'] ] = count( $preview['rows'] );
 
 			$preview['rows'][] = array(
 				'row_number'   => (int) $row['row_number'],
@@ -715,6 +741,19 @@ class SMD_Importer {
 				'notes'        => implode( ' ', array_unique( $notes ) ),
 				'data'         => $row,
 			);
+		}
+
+		foreach ( $extras as $owner_row => $extra_subscriptions ) {
+			if ( isset( $row_index[ $owner_row ] ) ) {
+				$preview['rows'][ $row_index[ $owner_row ] ]['data']['extra_subscriptions'] = $extra_subscriptions;
+				$preview['rows'][ $row_index[ $owner_row ] ]['notes'] = trim(
+					$preview['rows'][ $row_index[ $owner_row ] ]['notes'] . ' ' . sprintf(
+						/* translators: %d: number of additional subscriptions */
+						_n( 'Also holds %d additional subscription (for sponsored members).', 'Also holds %d additional subscriptions (for sponsored members).', count( $extra_subscriptions ), 'strong-members-directory' ),
+						count( $extra_subscriptions )
+					)
+				);
+			}
 		}
 
 		foreach ( $preview['rows'] as $preview_row ) {
@@ -1025,6 +1064,16 @@ class SMD_Importer {
 		if ( '' !== $data['stripe_status'] ) {
 			update_post_meta( $post_id, '_smd_billing_status', $data['stripe_status'] );
 		}
+
+		// Extra subscriptions (a member sponsoring others) are kept as separate rows under
+		// their own key so they never replace the main customer and subscription IDs.
+		if ( ! empty( $data['extra_subscriptions'] ) ) {
+			delete_post_meta( $post_id, '_smd_stripe_additional_subscription' );
+
+			foreach ( $data['extra_subscriptions'] as $extra ) {
+				add_post_meta( $post_id, '_smd_stripe_additional_subscription', $extra );
+			}
+		}
 	}
 
 	/**
@@ -1090,6 +1139,10 @@ class SMD_Importer {
 
 		if ( 'skip' === $action ) {
 			return __( 'Skip', 'strong-members-directory' );
+		}
+
+		if ( 'attach' === $action ) {
+			return __( 'Attach to member', 'strong-members-directory' );
 		}
 
 		return __( 'Create', 'strong-members-directory' );
